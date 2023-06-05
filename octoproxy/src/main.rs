@@ -7,7 +7,7 @@ enum OctoCmd {
     Client(octoproxy_client::Cmd),
     Server(octoproxy_server::Cmd),
     EasyCert(octoproxy_easycert::Cmd),
-    TUI(octoproxy_tui::Cmd),
+    Tui(octoproxy_tui::Cmd),
 }
 
 impl OctoCmd {
@@ -16,7 +16,7 @@ impl OctoCmd {
             OctoCmd::Client(cmd) => cmd.run(),
             OctoCmd::Server(cmd) => cmd.run(),
             OctoCmd::EasyCert(cmd) => cmd.run(),
-            OctoCmd::TUI(cmd) => cmd.run(),
+            OctoCmd::Tui(cmd) => cmd.run(),
         }
     }
 }

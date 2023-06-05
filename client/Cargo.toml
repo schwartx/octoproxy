@@ -30,7 +30,7 @@ axum = { version = "0.6.18", features = ["ws"] }
 left-right = "0.11.5"
 hashring = "0.3.0"
 
-octoproxy-lib = { path = "../lib" }
+octoproxy-lib = { path = "../lib", version = "0.1.0" }
 quinn = { workspace = true }
 parking_lot = "0.12.1"
 

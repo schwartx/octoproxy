@@ -27,7 +27,7 @@ tokio-stream = "0.1.12"
 httparse = "1.8.0"
 quinn = { workspace = true }
 
-mimalloc = { version = "*", default-features = false, optional = true }
+mimalloc = { version = "0.1.37", default-features = false, optional = true }
 futures-util = "0.3.28"
 hyper = { version = "0.14.26", default-features = false, features = [
     "tcp",

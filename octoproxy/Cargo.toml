@@ -4,6 +4,7 @@ description = "A load balancing proxy with mTLS encryption for QUIC and HTTP/2"
 version = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }
+readme = { workspace = true }
 repository = { workspace = true }
 edition = "2021"
 
@@ -11,7 +12,7 @@ edition = "2021"
 clap = { workspace = true }
 anyhow = { workspace = true }
 
-octoproxy-client = { path = "../client" }
-octoproxy-server = { path = "../server" }
-octoproxy-easycert = { path = "../easycert" }
-octoproxy-tui = { path = "../tui" }
+octoproxy-client = { path = "../client", version = "0.1.0" }
+octoproxy-server = { path = "../server", version = "0.1.0" }
+octoproxy-easycert = { path = "../easycert", version = "0.1.0" }
+octoproxy-tui = { path = "../tui", version = "0.1.0" }
