@@ -1,5 +1,6 @@
 [package]
 name = "octoproxy-client"
+description = "Client library for octoproxy"
 version = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }

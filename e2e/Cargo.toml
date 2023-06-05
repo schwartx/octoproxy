@@ -1,10 +1,13 @@
 [package]
 name = "e2e"
-version = "0.1.0"
 edition = "2021"
-publish = false
+description = "octoproxy's e2e bins"
+version = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+publish = false
 
 [[bin]]
 name = "testclient"
