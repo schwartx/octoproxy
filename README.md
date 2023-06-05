@@ -1,12 +1,14 @@
 <h1 align="center">
 <img width="200px" src="./doc/assets/logo.png" />
 
-[![CI][s0]][l0] ![MIT][s1]
+[![CI][s0]][l0] ![MIT][s1] [![crates][s2]][l2]
 </h1>
 
 [s0]: https://github.com/schwartx/octoproxy/workflows/CI/badge.svg
 [l0]: https://github.com/schwartx/octoproxy/actions
 [s1]: https://img.shields.io/badge/license-MIT-blue.svg
+[s2]: https://img.shields.io/crates/v/octoproxy.svg
+[l2]: https://crates.io/crates/octoproxy
 
 <h5 align="center">Octoproxy - A load balancing proxy with mTLS encryption for QUIC and HTTP/2</h1>
 
