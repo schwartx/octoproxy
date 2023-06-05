@@ -6,7 +6,7 @@ use clap::Subcommand;
 enum OctoCmd {
     Client(octoproxy_client::Cmd),
     Server(octoproxy_server::Cmd),
-    EasyCert(octoproxy_easycert::Cmd),
+    Easycert(octoproxy_easycert::Cmd),
     Tui(octoproxy_tui::Cmd),
 }
 
@@ -15,7 +15,7 @@ impl OctoCmd {
         match self {
             OctoCmd::Client(cmd) => cmd.run(),
             OctoCmd::Server(cmd) => cmd.run(),
-            OctoCmd::EasyCert(cmd) => cmd.run(),
+            OctoCmd::Easycert(cmd) => cmd.run(),
             OctoCmd::Tui(cmd) => cmd.run(),
         }
     }
