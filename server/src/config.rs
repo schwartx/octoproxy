@@ -1,6 +1,6 @@
+use crate::Cmd;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use clap::Parser;
 use octoproxy_lib::{
     config::{parse_log_level_str, parse_socket_address, TomlFileConfig},
     tls::{build_tls_server_config, NeverProducesTickets, QUIC_ALPN},
@@ -11,20 +11,6 @@ use tokio_rustls::TlsAcceptor;
 use tracing::{debug, info, log::warn, metadata::LevelFilter, trace, trace_span};
 
 use crate::proxy::{handle_h2_connection, handle_quic_connection};
-
-#[derive(Debug, Parser)]
-#[command(author, version, about, long_about = None)]
-pub struct Opts {
-    /// http proxy server listening address
-    #[arg(short = 'l', long = "listen")]
-    listen_address: Option<String>,
-    /// trusted client cert
-    #[arg(long = "auth")]
-    auth: Option<PathBuf>,
-    /// config
-    #[arg(short = 'c', long = "config", default_value = "config.toml")]
-    config: PathBuf,
-}
 
 /// Config Toml
 #[derive(Debug, Deserialize)]
@@ -68,7 +54,7 @@ pub struct QuicConfig {
 
 impl Config {
     /// command line option overwrites listen_address
-    pub fn new(opts: Opts) -> anyhow::Result<Self> {
+    pub fn new(opts: Cmd) -> anyhow::Result<Self> {
         let file_config = FileConfig::load_from_file(opts.config)?;
 
         let listen_address = match opts.listen_address {

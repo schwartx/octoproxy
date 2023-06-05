@@ -1,5 +1,5 @@
 [package]
-name = "octui"
+name = "octoproxy-tui"
 version = { workspace = true }
 authors = { workspace = true }
 license = { workspace = true }

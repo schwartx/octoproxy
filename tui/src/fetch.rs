@@ -27,7 +27,7 @@ pub struct Fetcher {
 }
 
 impl Fetcher {
-    pub fn new(url: String, close_tx: Sender<()>) -> Self {
+    pub(crate) fn new(url: String, close_tx: Sender<()>) -> Self {
         let (sender, receiver) = unbounded();
         let (inner_sender, inner_receiver) = unbounded();
         let f = Self {
@@ -59,19 +59,19 @@ impl Fetcher {
         f
     }
 
-    pub fn get_receiver(&self) -> Receiver<MetricApiResp> {
+    pub(crate) fn get_receiver(&self) -> Receiver<MetricApiResp> {
         self.receiver.clone()
     }
 
-    pub fn get_pending_on_id(&self) -> usize {
+    pub(crate) fn get_pending_on_id(&self) -> usize {
         self.pending_on_id
     }
 
-    pub fn is_pending(&self) -> bool {
+    pub(crate) fn is_pending(&self) -> bool {
         self.pending.load(Ordering::Relaxed)
     }
 
-    pub fn reset_backend(&mut self, selected: usize) {
+    pub(crate) fn reset_backend(&mut self, selected: usize) {
         if self.backend_action(MetricApiReq::ResetBackend {
             backend_id: selected,
         }) {
@@ -79,7 +79,7 @@ impl Fetcher {
         }
     }
 
-    pub fn switch_backend_protocol(&mut self, selected: usize) {
+    pub(crate) fn switch_backend_protocol(&mut self, selected: usize) {
         if self.backend_action(MetricApiReq::SwitchBackendProtocol {
             backend_id: selected,
         }) {
@@ -87,7 +87,7 @@ impl Fetcher {
         }
     }
 
-    pub fn switch_backend_status(&mut self, selected: usize) {
+    pub(crate) fn switch_backend_status(&mut self, selected: usize) {
         if self.backend_action(MetricApiReq::SwitchBackendStatus {
             backend_id: selected,
         }) {

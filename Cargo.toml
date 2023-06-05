@@ -1,6 +1,6 @@
 
 [workspace]
-members = ["tui", "e2e", "client", "lib", "server", "easycert"]
+members = ["octoproxy", "tui", "e2e", "client", "lib", "server", "easycert"]
 
 [workspace.package]
 version = "0.1.0"
@@ -19,6 +19,7 @@ strip = "debuginfo"
 anyhow = "1.0.71"
 clap = { version = "4.2.7", default-features = false, features = [
     "derive",
+    "help",
     "std",
 ] }
 toml = "0.7.3"

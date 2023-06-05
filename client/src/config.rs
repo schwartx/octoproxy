@@ -7,9 +7,8 @@ use octoproxy_lib::metric::BackendStatus;
 use octoproxy_lib::proxy_client::ProxyConnector;
 use tracing::metadata::LevelFilter;
 
-use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
-use clap::Parser;
 use octoproxy_lib::config::{parse_log_level_str, parse_socket_address, TomlFileConfig};
 
 use serde::Deserialize;
@@ -21,18 +20,7 @@ use crate::balance::{
     Balance, Frist, LeastLoadedTime, LoadBalancingAlgorithm, Random, RoundRobin, UriHash,
 };
 use crate::metric::{Metric, PeerInfo};
-
-/// Commandline Args
-#[derive(Debug, Parser)]
-#[command(author, version, about, long_about = None)]
-pub(crate) struct Opts {
-    /// http proxy server listening port
-    #[arg(short = 'l', long = "listen")]
-    listen_address: Option<String>,
-    /// config
-    #[arg(short = 'c', long = "config", default_value = "config.toml")]
-    config: PathBuf,
-}
+use crate::Cmd;
 
 /// Config Toml
 #[derive(Debug, Deserialize)]
@@ -66,7 +54,7 @@ pub(crate) struct ConfigBackend {
 
 impl Config {
     /// command line option overwrites listen_address
-    pub(crate) fn new(opts: Opts) -> anyhow::Result<Self> {
+    pub(crate) fn new(opts: Cmd) -> anyhow::Result<Self> {
         let file_config =
             FileConfig::load_from_file(opts.config).context("Could not load config file")?;
 
@@ -173,6 +161,8 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
     use tokio::{net::TcpListener, sync::Mutex};
     use tracing::debug;
@@ -183,7 +173,7 @@ mod tests {
     #[test]
     fn test_new_config() {
         let cur_env = std::env::var("RUST_LOG").ok();
-        let config = Config::new(Opts {
+        let config = Config::new(Cmd {
             listen_address: Some("8080".to_owned()),
             config: PathBuf::from("assets/testconfig/simple_client.toml"),
         })
@@ -213,7 +203,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_available_backends() {
-        let mut config = Config::new(Opts {
+        let mut config = Config::new(Cmd {
             listen_address: Some("8080".to_owned()),
             config: PathBuf::from("assets/testconfig/simple_client.toml"),
         })

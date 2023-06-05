@@ -28,7 +28,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(fetcher: Fetcher) -> Result<Self> {
+    pub(crate) fn new(fetcher: Fetcher) -> Result<Self> {
         // let backends = fetcher.get_all_backends()?;
         let mut backends_state = ListState::default();
         backends_state.select(Some(0));
@@ -44,7 +44,7 @@ impl App {
         })
     }
 
-    pub fn any_work_pending(&self) -> bool {
+    pub(crate) fn any_work_pending(&self) -> bool {
         self.fetcher.is_pending()
     }
 
@@ -58,7 +58,7 @@ impl App {
         false
     }
 
-    pub fn handle_fetch(&mut self, fetch: MetricApiResp) {
+    pub(crate) fn handle_fetch(&mut self, fetch: MetricApiResp) {
         match fetch {
             MetricApiResp::AllBackends { items } => {
                 self.backends = items;
@@ -72,7 +72,7 @@ impl App {
         }
     }
 
-    pub fn event(&mut self, ev: Event) -> Result<()> {
+    pub(crate) fn event(&mut self, ev: Event) -> Result<()> {
         log::trace!("event: {:?}", ev);
 
         if self.check_quit(&ev) {
@@ -287,7 +287,7 @@ impl App {
         f.render_stateful_widget(backends, list_chunk, &mut self.backends_state);
     }
 
-    pub fn draw<B: Backend>(&mut self, f: &mut Frame<B>) -> Result<()> {
+    pub(crate) fn draw<B: Backend>(&mut self, f: &mut Frame<B>) -> Result<()> {
         let fsize = f.size();
 
         let chunks_main = Layout::default()
@@ -315,7 +315,7 @@ pub struct Input {
 }
 
 impl Input {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let (tx, rx) = unbounded();
 
         thread::spawn(move || {
@@ -335,7 +335,7 @@ impl Input {
         }
     }
 
-    pub fn receiver(&self) -> Receiver<Event> {
+    pub(crate) fn receiver(&self) -> Receiver<Event> {
         self.receiver.clone()
     }
 

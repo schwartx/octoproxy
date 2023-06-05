@@ -10,5 +10,6 @@ edition = "2021"
 
 [dependencies]
 clap = { workspace = true }
+anyhow = { workspace = true }
 rcgen = { version = "0.10.0", features = ["pem", "x509-parser"] }
 time = { version = "0.3.6", default-features = false }

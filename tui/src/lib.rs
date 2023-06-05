@@ -34,7 +34,7 @@ static SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 
 /// TODO use lib's BackendMetric
 #[derive(Serialize, Deserialize)]
-pub struct BackendMetric {
+pub(crate) struct BackendMetric {
     pub backend_name: String,
     pub domain: String,
     pub address: String,
@@ -43,7 +43,7 @@ pub struct BackendMetric {
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
-pub enum MetricApiResp {
+pub(crate) enum MetricApiResp {
     SwitchBackendStatus,
     SwitchBackendProtocol,
     ResetBackend,
@@ -51,27 +51,29 @@ pub enum MetricApiResp {
     Error { msg: String },
 }
 
+/// TUI commandline args
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
-struct Opts {
+pub struct Cmd {
     #[arg(short = 'p', default_value_t = 8404)]
     port: u64,
 }
 
-fn main() -> Result<()> {
-    env_logger::init();
+impl Cmd {
+    pub fn run(self) -> Result<()> {
+        //
+        env_logger::init();
 
-    let opts = Opts::parse();
+        setup_terminal()?;
+        defer! {
+            shutdown_terminal();
+        };
 
-    setup_terminal()?;
-    defer! {
-        shutdown_terminal();
-    };
+        let mut terminal = start_terminal(io::stdout())?;
+        let input = Input::new();
 
-    let mut terminal = start_terminal(io::stdout())?;
-    let input = Input::new();
-
-    run_app(&input, &mut terminal, opts.port)
+        run_app(&input, &mut terminal, self.port)
+    }
 }
 
 fn run_app(
@@ -161,7 +163,7 @@ fn select_event(
     Ok(ev)
 }
 
-pub enum QueueEvent {
+pub(crate) enum QueueEvent {
     AppClose,
     SpinnerUpdate,
     Fetch(MetricApiResp),
