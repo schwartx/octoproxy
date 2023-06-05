@@ -18,9 +18,9 @@ retry_timeout = 3
 # 0 is no max retries
 max_retries = 0
 
-cacert = "../certs_server/ca.crt"
-client_key = "../certs_client/client.key"
-client_cert = "../certs_client/client.crt"
+cacert = "./example-certs/ca.crt"
+client_key = "./example-certs/client/client.key"
+client_cert = "./example-certs/client/client.crt"
 
 http2 = { keep_alive_interval = 1, keep_alive_timeout = 1, keep_alive_while_idle = true }
 # keep_alive_interval
@@ -47,6 +47,6 @@ address = "localhost:8444"
 # retry timeout when the backend fail to connect remote server
 retry_timeout = 30
 
-cacert = "../certs_server/ca.crt"
-client_key = "../certs_client/client.key"
-client_cert = "../certs_client/client.crt"
+cacert = "./example-certs/ca.crt"
+client_key = "./example-certs/client/client.key"
+client_cert = "./example-certs/client/client.crt"

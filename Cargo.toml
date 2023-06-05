@@ -3,7 +3,6 @@
 members = ["octoproxy", "tui", "e2e", "client", "lib", "server", "easycert"]
 
 [workspace.package]
-name = "octoproxy"
 version = "0.1.1"
 authors = ["Ichika <root.schwarz.chan@gmail.com>"]
 license = "MIT"

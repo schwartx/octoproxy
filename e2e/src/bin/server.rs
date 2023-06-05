@@ -64,8 +64,8 @@ async fn main() {
 
     let addr: SocketAddr = ([127, 0, 0, 1], opts.port).into();
     if opts.tls {
-        // let cert = include_bytes!("../../../certs_server/server.crt");
-        // let key = include_bytes!("../../../certs_server/server.key");
+        // let cert = include_bytes!("../.././example-certs/server/server.crt");
+        // let key = include_bytes!("../.././example-certs/server/server.key");
         // println!("Listening(tls) on https://{}", addr);
         // warp::serve(hello).tls().cert(cert).key(key).run(addr).await;
     } else {
