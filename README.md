@@ -31,39 +31,32 @@ _Octoproxy_ is a load balancing proxy that draws inspiration from the remarkable
 
 ### Build from source
 
-Build the client/server with [mimalloc](https://github.com/microsoft/mimalloc):
+Build with [mimalloc](https://github.com/microsoft/mimalloc):
 ```bash
-cargo build --release -F alloc --bin octoproxy-server
-cargo build --release -F alloc --bin octoproxy-client
-```
-
-Build the `octui` and `octoproxy-easycert`:
-```bash
-cargo build --release --bin octoproxy-easycert
-cargo build --release --bin octui
+cargo build --bin octoproxy --release -F alloc
 ```
 
 ### Usage
 
 From the client side:
 ```bash
-octoproxy-client -c config.toml
+octoproxy client -c config.toml
 ```
 
 From the server side:
 ```bash
-octoproxy-server -c config.toml
+octoproxy server -c config.toml
 ```
 
 To generate a client/server certificate using an existing CA certificate with `octoproxy-easycert`
 ```bash
-octoproxy-easycert --cacert ./ca.crt --cakey ./ca.key --common-name <common name> --san "DNS:<domain name>" --san "IP:<ip adddress>" -o . --days 365 <client/server cert name>
+octoproxy easycert --cacert ./ca.crt --cakey ./ca.key --common-name <common name> --san "DNS:<domain name>" --san "IP:<ip adddress>" -o . --days 365 <client/server cert name>
 ```
 Please ensure that you provide valid and appropriate values for the parameters, including at least one Subject Alternative Name (SAN) value as required by the `--san` option.
 
 Example: To generate a certificate for local server use:
 ```bash
-octoproxy-easycert --cacert ./ca.crt --cakey ./ca.key --common-name server_name --san "DNS:localhost" --san "IP:127.0.0.1" -o . --days 3650 server
+octoproxy easycert --cacert ./ca.crt --cakey ./ca.key --common-name server_name --san "DNS:localhost" --san "IP:127.0.0.1" -o . --days 3650 server
 ```
 
 
