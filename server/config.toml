@@ -1,0 +1,11 @@
+log_level = "info"
+max_concurrent_tasks = 32
+
+listen_address = "0.0.0.0:8443"
+
+auth_key = "../certs_server/server.key"
+auth_cert = "../certs_server/server.crt"
+
+# trusted client CAs
+client_ca = "../certs_client/ca.crt"
+quic = true

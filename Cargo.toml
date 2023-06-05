@@ -1,0 +1,40 @@
+
+[workspace]
+members = ["tui", "e2e", "client", "lib", "server", "easycert"]
+
+[workspace.package]
+version = "0.1.0"
+authors = ["Ichika <root.schwarz.chan@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/schwartx/octoproxy"
+readme = "README.md"
+
+
+[profile.release]
+opt-level = 1
+lto = "fat"
+strip = "debuginfo"
+
+[workspace.dependencies]
+anyhow = "1.0.71"
+clap = { version = "4.2.7", default-features = false, features = [
+    "derive",
+    "std",
+] }
+toml = "0.7.3"
+tokio = { version = "1.28.1", default-features = false, features = ["full"] }
+bytes = "1.4.0"
+serde = { version = "1.0.163", features = ["derive"] }
+serde_json = "1.0.96"
+tracing = { version = "0.1.37" }
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+http = "0.2.9"
+futures = "0.3.28"
+url = "2.3.1"
+tokio-rustls = "0.24.0"
+rustls = { version = "0.21.1" }
+hyper = { version = "0.14.26", default-features = false }
+tokio-util = { version = "0.7.7", default-features = false }
+h3 = "0.0.2"
+h3-quinn = "0.0.3"
+quinn = "0.10.1"

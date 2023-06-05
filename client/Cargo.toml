@@ -1,0 +1,42 @@
+[package]
+name = "octoproxy-client"
+version = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+bytes = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde_json = { workspace = true }
+http = { workspace = true }
+futures = { workspace = true }
+tokio-rustls = { workspace = true }
+rustls = { workspace = true }
+hyper = { workspace = true, default-features = false, features = [
+    "backports",
+    "http2",
+] }
+tokio-util = { workspace = true, default-features = false }
+rand = "0.8.5"
+axum = { version = "0.6.18", features = ["ws"] }
+left-right = "0.11.5"
+hashring = "0.3.0"
+
+octoproxy-lib = { path = "../lib" }
+quinn = { workspace = true }
+parking_lot = "0.12.1"
+
+
+[features]
+default = []
+alloc = ["octoproxy-lib/alloc"]
+
+[dev-dependencies]
+toml = { workspace = true }

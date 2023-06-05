@@ -1,0 +1,52 @@
+listen_address = "0.0.0.0:8081"
+metric_address = "127.0.0.1:8403"
+log_level = "info"
+# random, round_robin, least_loaded_time,uri_hash, frist
+balance = "frist"
+
+# balance = "roundrobin"
+
+[backends]
+
+# local server 1
+[backends.local1]
+protocol = "http2"
+# cafile for client auth
+address = "localhost:8443"
+# retry timeout when the backend fail to connect remote server
+retry_timeout = 3
+# 0 is no max retries
+max_retries = 0
+
+cacert = "../certs_server/ca.crt"
+client_key = "../certs_client/client.key"
+client_cert = "../certs_client/client.crt"
+
+http2 = { keep_alive_interval = 1, keep_alive_timeout = 1, keep_alive_while_idle = true }
+# keep_alive_interval
+# Sets an interval for HTTP2 Ping frames should be sent to keep a connection alive.
+
+# keep_alive_timeout
+# Sets a timeout for receiving an acknowledgement of the keep-alive ping.
+# If the ping is not acknowledged within the timeout, the connection will be closed
+
+# keep_alive_while_idle
+# Sets whether HTTP2 keep-alive should apply while the connection is idle.
+# If disabled, keep-alive pings are only sent while there are open request/responses streams.
+# If enabled, pings are also sent when no streams are active.
+
+# bbr, cubic
+quic = { max_idle_timeout = 200, keep_alive_interval = 0, ipv4_only = true, expected_rtt = 300, max_stream_bandwidth = 2097152, congestion = "bbr" }
+
+# server 2
+[backends.remote1]
+status = "force_closed"
+protocol = "quic"
+# cafile for client auth
+address = "localhost:8444"
+# retry timeout when the backend fail to connect remote server
+retry_timeout = 30
+
+cacert = "../certs_server/ca.crt"
+client_key = "../certs_client/client.key"
+client_cert = "../certs_client/client.crt"

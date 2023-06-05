@@ -1,0 +1,39 @@
+[package]
+name = "octoproxy-server"
+version = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+serde = { workspace = true }
+url = { workspace = true }
+tokio-rustls = { workspace = true }
+tokio-util = { workspace = true, features = ["codec"] }
+
+hyper = { workspace = true, default-features = false, features = [
+    "backports",
+    "server",
+    "http2",
+] }
+
+quinn = { workspace = true }
+
+tokio-stream = "0.1.12"
+
+octoproxy-lib = { path = "../lib" }
+
+[features]
+default = []
+alloc = ["octoproxy-lib/alloc"]
