@@ -18,8 +18,6 @@ use crate::MetricApiResp;
 pub static BACKENDS_FETCHER_INTERVAL: Duration = Duration::from_millis(500);
 
 pub struct Fetcher {
-    url: String,
-    sender: Sender<MetricApiResp>,
     receiver: Receiver<MetricApiResp>,
     inner_sender: Sender<MetricApiReq>,
     pending: Arc<AtomicBool>,
@@ -30,32 +28,28 @@ impl Fetcher {
     pub(crate) fn new(url: String, close_tx: Sender<()>) -> Self {
         let (sender, receiver) = unbounded();
         let (inner_sender, inner_receiver) = unbounded();
-        let f = Self {
-            url,
-            sender,
-            inner_sender,
-            receiver,
-            pending: Arc::new(AtomicBool::new(false)),
-            pending_on_id: 0,
-        };
+        let pending = Arc::new(AtomicBool::new(false));
+        let pending_t = pending.clone();
 
-        let app_sender = f.sender.clone();
-
-        let pending = f.pending.clone();
-        let url = f.url.clone();
         thread::spawn(move || {
-            match run_loop(&url, app_sender.clone(), inner_receiver, pending, close_tx) {
+            match run_loop(&url, sender.clone(), inner_receiver, pending_t, close_tx) {
                 Ok(_) => {}
                 Err(e) => {
-                    app_sender
+                    sender
                         .send(MetricApiResp::Error {
                             msg: format!("{:?}", e),
                         })
-                        .unwrap();
+                        .unwrap_or(());
                 }
             }
         });
 
+        let f = Self {
+            inner_sender,
+            receiver,
+            pending,
+            pending_on_id: 0,
+        };
         f
     }
 
