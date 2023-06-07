@@ -44,13 +44,12 @@ impl Fetcher {
             }
         });
 
-        let f = Self {
+        Self {
             inner_sender,
             receiver,
             pending,
             pending_on_id: 0,
-        };
-        f
+        }
     }
 
     pub(crate) fn get_receiver(&self) -> Receiver<MetricApiResp> {
