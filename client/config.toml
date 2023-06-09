@@ -10,7 +10,7 @@ balance = "frist"
 
 # local server 1
 [backends.local1]
-protocol = "http2"
+protocol = "quic"
 # cafile for client auth
 address = "localhost:8443"
 # retry timeout when the backend fail to connect remote server

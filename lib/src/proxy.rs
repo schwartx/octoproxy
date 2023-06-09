@@ -1,9 +1,10 @@
+#![allow(unused)]
 use std::{fmt::Display, pin::Pin};
 
 use anyhow::bail;
 use bytes::{Bytes, BytesMut};
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite},
     net::TcpStream,
 };
 use tokio_stream::StreamExt;
@@ -41,19 +42,19 @@ where
     }
 }
 
-pub async fn tunnel<I>(inbound: I) -> anyhow::Result<()>
+pub async fn tunnel<I>(mut inbound: I) -> anyhow::Result<()>
 where
     I: AsyncRead + AsyncWrite + Unpin + Send,
 {
-    let (request_info, mut inbound) = ReqInfoGetter { inbound }.get().await?;
+    let url_len = inbound.read_u16().await?;
 
-    // dont have to check again if reusing a connection
-    if http::Method::CONNECT != request_info.method {
-        bail!("Only support CONNECT");
-    }
+    let mut buf = BytesMut::with_capacity(url_len as usize);
+    inbound.read_buf(&mut buf).await?;
 
-    let mut outbound = TcpStream::connect(&request_info.path).await?;
-    debug!("Established tunnel: {}", request_info.path);
+    let url = std::str::from_utf8(&buf)?;
+
+    let mut outbound = TcpStream::connect(url).await?;
+    debug!("Established tunnel: {}", url);
     tokio::io::copy_bidirectional(&mut inbound, &mut outbound).await?;
     Ok(())
 }
