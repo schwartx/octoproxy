@@ -58,8 +58,11 @@ impl App {
         false
     }
 
-    pub(crate) fn update_backends(&mut self, items: Vec<BackendMetric>) {
-        self.backends = items
+    pub(crate) fn update_backends(&mut self, items: &Vec<BackendMetric>) {
+        self.backends.clear();
+        for v in items {
+            self.backends.push(v.clone())
+        }
     }
 
     pub(crate) fn event(&mut self, ev: Event) -> Result<()> {

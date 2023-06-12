@@ -18,7 +18,6 @@ use crate::MetricApiResp;
 pub static BACKENDS_FETCHER_INTERVAL: Duration = Duration::from_millis(500);
 
 pub struct Fetcher {
-    // receiver: Receiver<MetricApiResp>,
     inner_sender: Sender<MetricApiReq>,
     pending: Arc<AtomicBool>,
     pending_on_id: usize,
@@ -27,7 +26,7 @@ pub struct Fetcher {
 impl Fetcher {
     pub(crate) fn new(
         url: String,
-        tx_fetcher: Sender<MetricApiResp>,
+        tx_fetcher: Sender<Arc<MetricApiResp>>,
         close_tx: Sender<()>,
     ) -> Self {
         let (inner_sender, inner_receiver) = unbounded();
@@ -45,9 +44,9 @@ impl Fetcher {
                 Ok(_) => {}
                 Err(e) => {
                     tx_fetcher
-                        .send(MetricApiResp::Error {
+                        .send(Arc::new(MetricApiResp::Error {
                             msg: format!("{:?}", e),
-                        })
+                        }))
                         .unwrap_or(());
                 }
             }
@@ -110,7 +109,7 @@ impl Fetcher {
 
 fn run_loop(
     url: &str,
-    tx: Sender<MetricApiResp>,
+    tx: Sender<Arc<MetricApiResp>>,
     inner_receiver: Receiver<MetricApiReq>,
     pending: Arc<AtomicBool>,
     close_tx: Sender<()>,
@@ -142,10 +141,11 @@ fn run_loop(
                         | MetricApiResp::SwitchBackendStatus
                         | MetricApiResp::ResetBackend => pending.store(false, Ordering::Relaxed),
                         MetricApiResp::AllBackends { items } => {
-                            tx.send(MetricApiResp::AllBackends { items }).unwrap();
+                            tx.send(Arc::new(MetricApiResp::AllBackends { items }))
+                                .unwrap();
                         }
                         MetricApiResp::Error { msg } => {
-                            tx.send(MetricApiResp::Error { msg }).unwrap();
+                            tx.send(Arc::new(MetricApiResp::Error { msg })).unwrap();
                         }
                     }
                 }
