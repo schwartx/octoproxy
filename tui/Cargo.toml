@@ -13,18 +13,12 @@ clap = { workspace = true }
 serde_json = { workspace = true }
 url = { workspace = true }
 serde = { workspace = true }
-
-reqwest = { version = "0.11.16", default-features = false, features = [
-    "blocking",
-] }
-
 ratatui = { version = "0.20", default-features = false, features = [
     'crossterm',
     'serde',
 ] }
 crossterm = { version = "0.26.1", features = ["serde"] }
 scopeguard = "1.1.0"
-backtrace = "0.3.67"
 crossbeam-channel = "0.5.8"
 log = "0.4.17"
 env_logger = "0.10.0"
