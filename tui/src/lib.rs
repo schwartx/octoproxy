@@ -1,6 +1,5 @@
 use std::{
     io::{self, Write},
-    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -34,7 +33,7 @@ mod spinner;
 static SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 
 /// TODO use lib's BackendMetric
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 pub(crate) struct BackendMetric {
     pub backend_name: String,
     pub domain: String,
@@ -107,14 +106,8 @@ fn run_app(
             QueueEvent::InputEvent(e) => {
                 app.event(e)?;
             }
-            // QueueEvent::Fetch(MetricApiResp::AllBackends { items }) => app.update_backends(items),
-            QueueEvent::Fetch(res) => match res.as_ref() {
-                MetricApiResp::AllBackends { items } => {
-                    app.update_backends(&items);
-                }
-                MetricApiResp::Error { msg } => todo!(),
-                _ => {}
-            },
+            QueueEvent::Fetch(MetricApiResp::AllBackends { items }) => app.update_backends(items),
+            QueueEvent::Fetch(_) => {}
             QueueEvent::AppClose => {
                 break;
             }
@@ -146,7 +139,7 @@ fn draw<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()>
 fn select_event(
     rx_input: &Receiver<Event>,
     rx_spinner: &Receiver<Instant>,
-    rx_fetcher: &Receiver<Arc<MetricApiResp>>,
+    rx_fetcher: &Receiver<MetricApiResp>,
     close_rx: &Receiver<()>,
 ) -> Result<QueueEvent> {
     let mut sel = Select::new();
@@ -173,7 +166,7 @@ fn select_event(
 pub(crate) enum QueueEvent {
     AppClose,
     SpinnerUpdate,
-    Fetch(Arc<MetricApiResp>),
+    Fetch(MetricApiResp),
     InputEvent(Event),
 }
 
