@@ -4,81 +4,25 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'octoproxy-client'",
+            "name": "Debug executable 'client'",
             "env": {
                 "RUST_LOG": "debug"
             },
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=octoproxy-client",
+                    "--bin=octoproxy",
                 ],
                 "filter": {
-                    "name": "octoproxy-client",
+                    "name": "octoproxy",
                     "kind": "bin"
                 }
             },
             "args": [
+                "client",
                 "-c",
                 "./client/config.toml"
             ],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug executable 'octoproxy-server'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=octoproxy-server",
-                ],
-                "filter": {
-                    "name": "octoproxy-server",
-                    "kind": "bin"
-                }
-            },
-            "env": {
-                "RUST_LOG": "debug"
-            },
-            "args": [
-                "-c",
-                "server/config.toml",
-            ],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug executable 'octoproxy-easycert'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=octoproxy-easycert",
-                ],
-                "filter": {
-                    "name": "octoproxy-easycert",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug executable 'tui'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=tui",
-                ],
-                "filter": {
-                    "name": "tui",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
             "cwd": "${workspaceFolder}"
         },
     ]

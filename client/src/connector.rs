@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use bytes::{BufMut, BytesMut};
 use futures::{ready, Future, FutureExt, TryFutureExt};
 use http::{Request, Uri};
 use hyper::client::conn::http2;
@@ -195,9 +196,12 @@ impl ConnConfig<QuicSendRequest> for QuicConnConfig {
                     poll_fn(|cx| loop {
                         match &state {
                             QuicStreamState::Init => {
-                                let buf =
-                                    format!("CONNECT {0} HTTP/1.1\r\nHost: {0}\r\n\r\n", host)
-                                        .into_bytes();
+                                // host len
+                                // host data
+                                let mut buf = BytesMut::new();
+                                buf.put_u16(host.len() as u16);
+                                buf.put(host.as_bytes());
+                                let buf = buf.to_vec();
                                 state = QuicStreamState::Write { buf };
                             }
                             QuicStreamState::Write { buf } => {
@@ -283,9 +287,13 @@ impl ConnConfig<H2SendRequest> for H2ConnConfig {
 
             match host {
                 Some(host) => {
-                    let buf =
-                        format!("CONNECT {0} HTTP/1.1\r\nHost: {0}\r\n\r\n", host).into_bytes();
+                    // host len
+                    // host data
+                    let mut buf = BytesMut::new();
+                    buf.put_u16(host.len() as u16);
+                    buf.put(host.as_bytes());
                     stream.write_all(&buf).await?;
+
                     Ok(BidiStream::H2(stream))
                 }
                 None => Ok(BidiStream::Alive),
