@@ -1,3 +1,4 @@
+use std::sync::RwLockReadGuard;
 use std::thread;
 use std::time::Duration;
 
@@ -5,7 +6,7 @@ use anyhow::Result;
 use crossbeam_channel::Sender;
 use crossbeam_channel::{unbounded, Receiver};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use octoproxy_lib::metric::BackendStatus;
+use octoproxy_lib::metric::{BackendMetric, BackendStatus};
 use ratatui::backend::Backend;
 use ratatui::layout::{Constraint, Corner, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -14,12 +15,10 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tab
 use ratatui::Frame;
 
 use crate::fetch::Fetcher;
-use crate::{BackendMetric, MetricApiResp};
 
 static POLL_DURATION: Duration = Duration::from_millis(1000);
 
 pub struct App {
-    backends: Vec<BackendMetric>,
     backends_state: ListState,
 
     fetcher: Fetcher,
@@ -29,14 +28,10 @@ pub struct App {
 
 impl App {
     pub(crate) fn new(fetcher: Fetcher) -> Result<Self> {
-        // let backends = fetcher.get_all_backends()?;
         let mut backends_state = ListState::default();
         backends_state.select(Some(0));
 
-        let backends = Vec::new();
-
         Ok(Self {
-            backends,
             fetcher,
             backends_state,
             do_quit: false,
@@ -58,18 +53,12 @@ impl App {
         false
     }
 
-    pub(crate) fn handle_fetch(&mut self, fetch: MetricApiResp) {
-        match fetch {
-            MetricApiResp::AllBackends { items } => {
-                self.backends = items;
-            }
+    pub(crate) fn set_error(&mut self, msg: String) {
+        self.log_text = msg
+    }
 
-            MetricApiResp::SwitchBackendStatus
-            | MetricApiResp::ResetBackend
-            | MetricApiResp::SwitchBackendProtocol => {}
-
-            MetricApiResp::Error { msg } => self.log_text = msg,
-        }
+    pub(crate) fn get_backends(&self) -> RwLockReadGuard<'_, Vec<BackendMetric>> {
+        self.fetcher.get_backends()
     }
 
     pub(crate) fn event(&mut self, ev: Event) -> Result<()> {
@@ -117,9 +106,10 @@ impl App {
     }
 
     fn select_next_backend(&mut self) {
+        let backends = self.get_backends();
         let i = match self.backends_state.selected() {
             Some(i) => {
-                if i >= self.backends.len() - 1 {
+                if i >= backends.len() - 1 {
                     0
                 } else {
                     i + 1
@@ -127,20 +117,23 @@ impl App {
             }
             None => 0,
         };
+        drop(backends);
         self.backends_state.select(Some(i));
     }
 
     fn select_prev_backend(&mut self) {
+        let backends = self.get_backends();
         let i = match self.backends_state.selected() {
             Some(i) => {
                 if i == 0 {
-                    self.backends.len() - 1
+                    backends.len() - 1
                 } else {
                     i - 1
                 }
             }
             None => 0,
         };
+        drop(backends);
         self.backends_state.select(Some(i));
     }
 
@@ -162,7 +155,7 @@ impl App {
         });
 
         let count = self
-            .backends
+            .get_backends()
             .iter()
             .map(|b| {
                 if b.metric.status == BackendStatus::Normal {
@@ -226,7 +219,7 @@ impl App {
         let pending_id = self.fetcher.get_pending_on_id();
 
         let backends: Vec<ListItem> = self
-            .backends
+            .get_backends()
             .iter()
             .enumerate()
             .map(|(id, backend)| {

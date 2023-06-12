@@ -1,3 +1,5 @@
+//! Awesome code copy from: https://github.com/extrawurst/gitui/blob/master/src/spinner.rs
+//!
 use std::{cell::Cell, char, io};
 
 use ratatui::{
