@@ -4,7 +4,7 @@ use std::{
 };
 
 use clap::Parser;
-use crossbeam_channel::{bounded, tick, Receiver, Select};
+use crossbeam_channel::{bounded, tick, unbounded, Receiver, Select};
 use crossterm::{
     event::Event,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -83,11 +83,12 @@ fn run_app(
 ) -> Result<(), anyhow::Error> {
     let (close_tx, close_rx) = bounded::<()>(1);
     let address = format!("ws://localhost:{}/", port);
-    let fetcher = Fetcher::new(address, close_tx);
+
+    let (tx_fetcher, rx_fetcher) = unbounded();
+    let fetcher = Fetcher::new(address, tx_fetcher, close_tx);
 
     let rx_input = input.receiver();
     let rx_spinner = tick(SPINNER_INTERVAL);
-    let rx_fetcher = fetcher.get_receiver();
 
     let mut app = App::new(fetcher)?;
     let mut spinner = Spinner::default();
@@ -105,13 +106,12 @@ fn run_app(
             QueueEvent::InputEvent(e) => {
                 app.event(e)?;
             }
-            QueueEvent::Fetch(res) => {
-                app.handle_fetch(res);
-            }
-            QueueEvent::SpinnerUpdate => unreachable!(),
+            QueueEvent::Fetch(MetricApiResp::AllBackends { items }) => app.update_backends(items),
+            QueueEvent::Fetch(_) => {}
             QueueEvent::AppClose => {
                 break;
             }
+            QueueEvent::SpinnerUpdate => unreachable!(),
         }
 
         draw(terminal, &mut app)?;

@@ -14,7 +14,7 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tab
 use ratatui::Frame;
 
 use crate::fetch::Fetcher;
-use crate::{BackendMetric, MetricApiResp};
+use crate::BackendMetric;
 
 static POLL_DURATION: Duration = Duration::from_millis(1000);
 
@@ -58,18 +58,8 @@ impl App {
         false
     }
 
-    pub(crate) fn handle_fetch(&mut self, fetch: MetricApiResp) {
-        match fetch {
-            MetricApiResp::AllBackends { items } => {
-                self.backends = items;
-            }
-
-            MetricApiResp::SwitchBackendStatus
-            | MetricApiResp::ResetBackend
-            | MetricApiResp::SwitchBackendProtocol => {}
-
-            MetricApiResp::Error { msg } => self.log_text = msg,
-        }
+    pub(crate) fn update_backends(&mut self, items: Vec<BackendMetric>) {
+        self.backends = items
     }
 
     pub(crate) fn event(&mut self, ev: Event) -> Result<()> {

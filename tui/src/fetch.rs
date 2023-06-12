@@ -18,24 +18,33 @@ use crate::MetricApiResp;
 pub static BACKENDS_FETCHER_INTERVAL: Duration = Duration::from_millis(500);
 
 pub struct Fetcher {
-    receiver: Receiver<MetricApiResp>,
+    // receiver: Receiver<MetricApiResp>,
     inner_sender: Sender<MetricApiReq>,
     pending: Arc<AtomicBool>,
     pending_on_id: usize,
 }
 
 impl Fetcher {
-    pub(crate) fn new(url: String, close_tx: Sender<()>) -> Self {
-        let (sender, receiver) = unbounded();
+    pub(crate) fn new(
+        url: String,
+        tx_fetcher: Sender<MetricApiResp>,
+        close_tx: Sender<()>,
+    ) -> Self {
         let (inner_sender, inner_receiver) = unbounded();
         let pending = Arc::new(AtomicBool::new(false));
         let pending_t = pending.clone();
 
         thread::spawn(move || {
-            match run_loop(&url, sender.clone(), inner_receiver, pending_t, close_tx) {
+            match run_loop(
+                &url,
+                tx_fetcher.clone(),
+                inner_receiver,
+                pending_t,
+                close_tx,
+            ) {
                 Ok(_) => {}
                 Err(e) => {
-                    sender
+                    tx_fetcher
                         .send(MetricApiResp::Error {
                             msg: format!("{:?}", e),
                         })
@@ -46,15 +55,15 @@ impl Fetcher {
 
         Self {
             inner_sender,
-            receiver,
+            // receiver,
             pending,
             pending_on_id: 0,
         }
     }
 
-    pub(crate) fn get_receiver(&self) -> Receiver<MetricApiResp> {
-        self.receiver.clone()
-    }
+    // pub(crate) fn get_receiver(&self) -> Receiver<MetricApiResp> {
+    //     self.receiver.clone()
+    // }
 
     pub(crate) fn get_pending_on_id(&self) -> usize {
         self.pending_on_id
