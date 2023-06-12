@@ -1,3 +1,4 @@
+use std::sync::RwLockReadGuard;
 use std::thread;
 use std::time::Duration;
 
@@ -19,7 +20,6 @@ use crate::BackendMetric;
 static POLL_DURATION: Duration = Duration::from_millis(1000);
 
 pub struct App {
-    backends: Vec<BackendMetric>,
     backends_state: ListState,
 
     fetcher: Fetcher,
@@ -29,14 +29,10 @@ pub struct App {
 
 impl App {
     pub(crate) fn new(fetcher: Fetcher) -> Result<Self> {
-        // let backends = fetcher.get_all_backends()?;
         let mut backends_state = ListState::default();
         backends_state.select(Some(0));
 
-        let backends = Vec::new();
-
         Ok(Self {
-            backends,
             fetcher,
             backends_state,
             do_quit: false,
@@ -58,12 +54,12 @@ impl App {
         false
     }
 
-    pub(crate) fn update_backends(&mut self, items: Vec<BackendMetric>) {
-        self.backends = items
+    pub(crate) fn set_error(&mut self, msg: String) {
+        self.log_text = msg
     }
 
-    pub(crate) fn get_backends(&self) -> &Vec<BackendMetric> {
-        &self.backends
+    pub(crate) fn get_backends(&self) -> RwLockReadGuard<'_, Vec<BackendMetric>> {
+        self.fetcher.get_backends()
     }
 
     pub(crate) fn event(&mut self, ev: Event) -> Result<()> {
@@ -122,6 +118,7 @@ impl App {
             }
             None => 0,
         };
+        drop(backends);
         self.backends_state.select(Some(i));
     }
 
@@ -137,6 +134,7 @@ impl App {
             }
             None => 0,
         };
+        drop(backends);
         self.backends_state.select(Some(i));
     }
 

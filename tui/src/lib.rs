@@ -33,12 +33,22 @@ mod spinner;
 static SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 
 /// TODO use lib's BackendMetric
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct BackendMetric {
     pub backend_name: String,
     pub domain: String,
     pub address: String,
     pub metric: MetricData,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub(crate) enum MetricApiNotify {
+    SwitchBackendStatus,
+    SwitchBackendProtocol,
+    ResetBackend,
+    AllBackends,
+    Error(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -106,7 +116,7 @@ fn run_app(
             QueueEvent::InputEvent(e) => {
                 app.event(e)?;
             }
-            QueueEvent::Fetch(MetricApiResp::AllBackends { items }) => app.update_backends(items),
+            QueueEvent::Fetch(MetricApiNotify::Error(msg)) => app.set_error(msg),
             QueueEvent::Fetch(_) => {}
             QueueEvent::AppClose => {
                 break;
@@ -139,7 +149,7 @@ fn draw<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()>
 fn select_event(
     rx_input: &Receiver<Event>,
     rx_spinner: &Receiver<Instant>,
-    rx_fetcher: &Receiver<MetricApiResp>,
+    rx_fetcher: &Receiver<MetricApiNotify>,
     close_rx: &Receiver<()>,
 ) -> Result<QueueEvent> {
     let mut sel = Select::new();
@@ -166,7 +176,7 @@ fn select_event(
 pub(crate) enum QueueEvent {
     AppClose,
     SpinnerUpdate,
-    Fetch(MetricApiResp),
+    Fetch(MetricApiNotify),
     InputEvent(Event),
 }
 

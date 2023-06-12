@@ -1,7 +1,7 @@
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, RwLock, RwLockReadGuard,
     },
     thread,
     time::Duration,
@@ -13,7 +13,7 @@ use octoproxy_lib::metric::MetricApiReq;
 use tungstenite::{connect, Message};
 use url::Url;
 
-use crate::MetricApiResp;
+use crate::{BackendMetric, MetricApiNotify, MetricApiResp};
 
 pub static BACKENDS_FETCHER_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -21,17 +21,27 @@ pub struct Fetcher {
     inner_sender: Sender<MetricApiReq>,
     pending: Arc<AtomicBool>,
     pending_on_id: usize,
+    backends: Arc<RwLock<Vec<BackendMetric>>>,
 }
 
 impl Fetcher {
     pub(crate) fn new(
         url: String,
-        tx_fetcher: Sender<MetricApiResp>,
+        tx_fetcher: Sender<MetricApiNotify>,
         close_tx: Sender<()>,
     ) -> Self {
         let (inner_sender, inner_receiver) = unbounded();
         let pending = Arc::new(AtomicBool::new(false));
         let pending_t = pending.clone();
+
+        let backends: Arc<RwLock<Vec<BackendMetric>>> = Arc::new(RwLock::new(Vec::new()));
+
+        let f = Self {
+            inner_sender,
+            pending,
+            pending_on_id: 0,
+            backends: backends.clone(),
+        };
 
         thread::spawn(move || {
             match run_loop(
@@ -40,24 +50,22 @@ impl Fetcher {
                 inner_receiver,
                 pending_t,
                 close_tx,
+                backends,
             ) {
                 Ok(_) => {}
                 Err(e) => {
                     tx_fetcher
-                        .send(MetricApiResp::Error {
-                            msg: format!("{:?}", e),
-                        })
+                        .send(MetricApiNotify::Error(format!("{:?}", e)))
                         .unwrap_or(());
                 }
             }
         });
 
-        Self {
-            inner_sender,
-            // receiver,
-            pending,
-            pending_on_id: 0,
-        }
+        f
+    }
+
+    pub(crate) fn get_backends(&self) -> RwLockReadGuard<Vec<BackendMetric>> {
+        self.backends.read().unwrap()
     }
 
     pub(crate) fn get_pending_on_id(&self) -> usize {
@@ -105,10 +113,11 @@ impl Fetcher {
 
 fn run_loop(
     url: &str,
-    tx: Sender<MetricApiResp>,
+    tx: Sender<MetricApiNotify>,
     inner_receiver: Receiver<MetricApiReq>,
     pending: Arc<AtomicBool>,
     close_tx: Sender<()>,
+    backends: Arc<RwLock<Vec<BackendMetric>>>,
 ) -> Result<()> {
     let (mut socket, _) = connect(Url::parse(url)?)?;
     let ticker = tick(BACKENDS_FETCHER_INTERVAL);
@@ -131,16 +140,18 @@ fn run_loop(
         match socket.read_message() {
             Ok(res) => match res {
                 Message::Text(res) => {
-                    let backends = serde_json::from_str::<MetricApiResp>(&res)?;
-                    match backends {
+                    let backends_resp = serde_json::from_str::<MetricApiResp>(&res)?;
+                    match backends_resp {
                         MetricApiResp::SwitchBackendProtocol
                         | MetricApiResp::SwitchBackendStatus
                         | MetricApiResp::ResetBackend => pending.store(false, Ordering::Relaxed),
                         MetricApiResp::AllBackends { items } => {
-                            tx.send(MetricApiResp::AllBackends { items }).unwrap();
+                            let mut guard = backends.write().unwrap();
+                            *guard = items;
+                            tx.send(MetricApiNotify::AllBackends).unwrap();
                         }
                         MetricApiResp::Error { msg } => {
-                            tx.send(MetricApiResp::Error { msg }).unwrap();
+                            tx.send(MetricApiNotify::Error(msg)).unwrap();
                         }
                     }
                 }
