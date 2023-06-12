@@ -18,7 +18,6 @@ use crate::MetricApiResp;
 pub static BACKENDS_FETCHER_INTERVAL: Duration = Duration::from_millis(500);
 
 pub struct Fetcher {
-    // receiver: Receiver<MetricApiResp>,
     inner_sender: Sender<MetricApiReq>,
     pending: Arc<AtomicBool>,
     pending_on_id: usize,
@@ -60,10 +59,6 @@ impl Fetcher {
             pending_on_id: 0,
         }
     }
-
-    // pub(crate) fn get_receiver(&self) -> Receiver<MetricApiResp> {
-    //     self.receiver.clone()
-    // }
 
     pub(crate) fn get_pending_on_id(&self) -> usize {
         self.pending_on_id

@@ -62,6 +62,10 @@ impl App {
         self.backends = items
     }
 
+    pub(crate) fn get_backends(&self) -> &Vec<BackendMetric> {
+        &self.backends
+    }
+
     pub(crate) fn event(&mut self, ev: Event) -> Result<()> {
         log::trace!("event: {:?}", ev);
 
@@ -107,9 +111,10 @@ impl App {
     }
 
     fn select_next_backend(&mut self) {
+        let backends = self.get_backends();
         let i = match self.backends_state.selected() {
             Some(i) => {
-                if i >= self.backends.len() - 1 {
+                if i >= backends.len() - 1 {
                     0
                 } else {
                     i + 1
@@ -121,10 +126,11 @@ impl App {
     }
 
     fn select_prev_backend(&mut self) {
+        let backends = self.get_backends();
         let i = match self.backends_state.selected() {
             Some(i) => {
                 if i == 0 {
-                    self.backends.len() - 1
+                    backends.len() - 1
                 } else {
                     i - 1
                 }
@@ -152,7 +158,7 @@ impl App {
         });
 
         let count = self
-            .backends
+            .get_backends()
             .iter()
             .map(|b| {
                 if b.metric.status == BackendStatus::Normal {
@@ -216,7 +222,7 @@ impl App {
         let pending_id = self.fetcher.get_pending_on_id();
 
         let backends: Vec<ListItem> = self
-            .backends
+            .get_backends()
             .iter()
             .enumerate()
             .map(|(id, backend)| {
