@@ -12,7 +12,6 @@ use crossterm::{
 };
 
 use anyhow::{bail, Result};
-use octoproxy_lib::metric::MetricData;
 use ratatui::{
     backend::{Backend, CrosstermBackend},
     Terminal,
@@ -32,15 +31,6 @@ mod spinner;
 
 static SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 
-/// TODO use lib's BackendMetric
-#[derive(Serialize, Deserialize, Clone)]
-pub(crate) struct BackendMetric {
-    pub backend_name: String,
-    pub domain: String,
-    pub address: String,
-    pub metric: MetricData,
-}
-
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub(crate) enum MetricApiNotify {
@@ -49,16 +39,6 @@ pub(crate) enum MetricApiNotify {
     ResetBackend,
     AllBackends,
     Error(String),
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub(crate) enum MetricApiResp {
-    SwitchBackendStatus,
-    SwitchBackendProtocol,
-    ResetBackend,
-    AllBackends { items: Vec<BackendMetric> },
-    Error { msg: String },
 }
 
 /// TUI commandline args

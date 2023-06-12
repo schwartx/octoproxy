@@ -9,11 +9,11 @@ use std::{
 
 use anyhow::Result;
 use crossbeam_channel::{tick, unbounded, Receiver, Select, Sender};
-use octoproxy_lib::metric::MetricApiReq;
+use octoproxy_lib::metric::{BackendMetric, MetricApiReq, MetricApiResp};
 use tungstenite::{connect, Message};
 use url::Url;
 
-use crate::{BackendMetric, MetricApiNotify, MetricApiResp};
+use crate::MetricApiNotify;
 
 pub static BACKENDS_FETCHER_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -21,7 +21,7 @@ pub struct Fetcher {
     inner_sender: Sender<MetricApiReq>,
     pending: Arc<AtomicBool>,
     pending_on_id: usize,
-    backends: Arc<RwLock<Vec<BackendMetric>>>,
+    backends: Arc<RwLock<Vec<BackendMetric<'static>>>>,
 }
 
 impl Fetcher {

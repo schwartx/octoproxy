@@ -6,7 +6,7 @@ use anyhow::Result;
 use crossbeam_channel::Sender;
 use crossbeam_channel::{unbounded, Receiver};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use octoproxy_lib::metric::BackendStatus;
+use octoproxy_lib::metric::{BackendMetric, BackendStatus};
 use ratatui::backend::Backend;
 use ratatui::layout::{Constraint, Corner, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -15,7 +15,6 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tab
 use ratatui::Frame;
 
 use crate::fetch::Fetcher;
-use crate::BackendMetric;
 
 static POLL_DURATION: Duration = Duration::from_millis(1000);
 
