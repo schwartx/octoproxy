@@ -39,3 +39,4 @@ tokio-util = { version = "0.7.7", default-features = false }
 h3 = "0.0.2"
 h3-quinn = "0.0.3"
 quinn = "0.10.1"
+parking_lot = "0.12.1"

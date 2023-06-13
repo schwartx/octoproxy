@@ -1,7 +1,7 @@
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, RwLock, RwLockReadGuard,
+        Arc,
     },
     thread,
     time::Duration,
@@ -10,6 +10,7 @@ use std::{
 use anyhow::Result;
 use crossbeam_channel::{tick, unbounded, Receiver, Select, Sender};
 use octoproxy_lib::metric::{BackendMetric, MetricApiReq, MetricApiResp};
+use parking_lot::RwLock;
 use tungstenite::{connect, Message};
 use url::Url;
 
@@ -21,7 +22,7 @@ pub struct Fetcher {
     inner_sender: Sender<MetricApiReq>,
     pending: Arc<AtomicBool>,
     pending_on_id: usize,
-    backends: Arc<RwLock<Vec<BackendMetric<'static>>>>,
+    pub(crate) backends: Arc<RwLock<Vec<BackendMetric<'static>>>>,
 }
 
 impl Fetcher {
@@ -62,10 +63,6 @@ impl Fetcher {
         });
 
         f
-    }
-
-    pub(crate) fn get_backends(&self) -> RwLockReadGuard<Vec<BackendMetric>> {
-        self.backends.read().unwrap()
     }
 
     pub(crate) fn get_pending_on_id(&self) -> usize {
@@ -151,7 +148,7 @@ fn run_loop(
                         | MetricApiResp::SwitchBackendStatus
                         | MetricApiResp::ResetBackend => pending.store(false, Ordering::Relaxed),
                         MetricApiResp::AllBackends { items } => {
-                            let mut guard = backends.write().unwrap();
+                            let mut guard = backends.write();
                             *guard = items;
                             tx.send(MetricApiNotify::AllBackends).unwrap();
                         }
@@ -168,7 +165,7 @@ fn run_loop(
                         | MetricApiResp::SwitchBackendStatus
                         | MetricApiResp::ResetBackend => pending.store(false, Ordering::Relaxed),
                         MetricApiResp::AllBackends { items } => {
-                            let mut guard = backends.write().unwrap();
+                            let mut guard = backends.write();
                             *guard = items;
                             tx.send(MetricApiNotify::AllBackends).unwrap();
                         }
