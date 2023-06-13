@@ -64,17 +64,14 @@ async fn ws_handler(State(config): State<Arc<Config>>, ws: WebSocketUpgrade) -> 
     })
 }
 
-async fn backend_metric_switcher<'a>(
-    req: MetricApiReq,
-    config: &'a Arc<Config>,
-) -> MetricApiResp<'a> {
+async fn backend_metric_switcher(req: MetricApiReq, config: &Arc<Config>) -> MetricApiResp {
     match req {
         MetricApiReq::AllBackends => {
-            let backends = get_all_backends(&config);
+            let backends = get_all_backends(config);
             MetricApiResp::AllBackends { items: backends }
         }
         MetricApiReq::SwitchBackendStatus { backend_id } => {
-            if let Err(e) = switch_backend_status(backend_id, &config).await {
+            if let Err(e) = switch_backend_status(backend_id, config).await {
                 MetricApiResp::Error { msg: e.to_string() }
             } else {
                 debug!("switching backend: {} status done", backend_id);
@@ -82,7 +79,7 @@ async fn backend_metric_switcher<'a>(
             }
         }
         MetricApiReq::ResetBackend { backend_id } => {
-            if let Err(e) = reset_backend(backend_id, &config).await {
+            if let Err(e) = reset_backend(backend_id, config).await {
                 MetricApiResp::Error { msg: e.to_string() }
             } else {
                 debug!("resetting backend: {} done", backend_id);
@@ -90,7 +87,7 @@ async fn backend_metric_switcher<'a>(
             }
         }
         MetricApiReq::SwitchBackendProtocol { backend_id } => {
-            if let Err(e) = switch_backend_protocol(backend_id, &config).await {
+            if let Err(e) = switch_backend_protocol(backend_id, config).await {
                 MetricApiResp::Error { msg: e.to_string() }
             } else {
                 debug!("switching backend: {} protocol done", backend_id);
