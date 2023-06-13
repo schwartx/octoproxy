@@ -33,7 +33,7 @@ hashring = "0.3.0"
 octoproxy-lib = { path = "../lib", version = "0.1.0" }
 quinn = { workspace = true }
 parking_lot = "0.12.1"
-
+rmp-serde = "1.1.1"
 
 [features]
 default = []
