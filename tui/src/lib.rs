@@ -32,7 +32,6 @@ mod spinner;
 static SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 
 #[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
 pub(crate) enum MetricApiNotify {
     SwitchBackendStatus,
     SwitchBackendProtocol,

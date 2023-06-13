@@ -25,5 +25,29 @@
             ],
             "cwd": "${workspaceFolder}"
         },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'tui'",
+            "env": {
+                "RUST_LOG": "debug"
+            },
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=octoproxy",
+                ],
+                "filter": {
+                    "name": "octoproxy",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "tui",
+                "-p",
+                "8403"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
     ]
 }

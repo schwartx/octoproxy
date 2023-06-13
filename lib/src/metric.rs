@@ -149,7 +149,6 @@ impl PeakEWMA {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
 pub enum MetricApiReq {
     SwitchBackendStatus { backend_id: usize },
     SwitchBackendProtocol { backend_id: usize },
@@ -158,7 +157,6 @@ pub enum MetricApiReq {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
 pub enum MetricApiResp<'a> {
     SwitchBackendStatus,
     SwitchBackendProtocol,
