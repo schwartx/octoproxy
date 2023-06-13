@@ -131,32 +131,12 @@ fn run_loop(
             _ => unreachable!(),
         }?;
 
-        // json
-        // let req = serde_json::to_string(&req).unwrap();
-        // socket.write_message(Message::Text(req)).unwrap();
-
         // msgpack
-        let req = rmp_serde::encode::to_vec(&req)?;
+        let req = rmp_serde::to_vec(&req)?;
         socket.write_message(Message::Binary(req))?;
 
         match socket.read_message() {
             Ok(res) => match res {
-                Message::Text(res) => {
-                    let backends_resp = serde_json::from_str::<MetricApiResp>(&res)?;
-                    match backends_resp {
-                        MetricApiResp::SwitchBackendProtocol
-                        | MetricApiResp::SwitchBackendStatus
-                        | MetricApiResp::ResetBackend => pending.store(false, Ordering::Relaxed),
-                        MetricApiResp::AllBackends { items } => {
-                            let mut guard = backends.write();
-                            *guard = items;
-                            tx.send(MetricApiNotify::AllBackends).unwrap();
-                        }
-                        MetricApiResp::Error { msg } => {
-                            tx.send(MetricApiNotify::Error(msg)).unwrap();
-                        }
-                    }
-                }
                 Message::Binary(res) => {
                     let backends_resp = rmp_serde::from_slice::<MetricApiResp>(&res)?;
 
@@ -174,7 +154,7 @@ fn run_loop(
                         }
                     }
                 }
-                Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => {}
+                Message::Text(_) | Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => {}
                 Message::Close(_) => {
                     close_tx.send(()).unwrap();
                     break;

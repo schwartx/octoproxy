@@ -42,26 +42,19 @@ async fn ws_handler(State(config): State<Arc<Config>>, ws: WebSocketUpgrade) -> 
         let recv_task = tokio::spawn(async move {
             while let Some(Ok(msg)) = receiver.next().await {
                 let res = match msg {
-                    Message::Text(req) => match serde_json::from_str::<MetricApiReq>(&req) {
-                        Ok(req) => backend_metric_switcher(req, &config).await,
-                        Err(e) => MetricApiResp::Error { msg: e.to_string() },
-                    },
                     Message::Binary(req) => match rmp_serde::from_slice::<MetricApiReq>(&req) {
                         Ok(req) => backend_metric_switcher(req, &config).await,
                         Err(e) => MetricApiResp::Error { msg: e.to_string() },
                     },
-                    Message::Ping(_) | Message::Pong(_) => {
+                    Message::Text(_) | Message::Ping(_) | Message::Pong(_) => {
                         continue;
                     }
                     Message::Close(_) => {
                         return;
                     }
                 };
-                let s = serde_json::to_string(&res).unwrap();
-                if sender.send(Message::Text(s)).await.is_err() {
-                    warn!("the sender dropped");
-                    return;
-                }
+                let s = rmp_serde::to_vec(&res).unwrap();
+                sender.send(Message::Binary(s)).await.unwrap();
             }
         });
 
