@@ -1,4 +1,3 @@
-use std::sync::RwLockReadGuard;
 use std::thread;
 use std::time::Duration;
 
@@ -6,7 +5,7 @@ use anyhow::Result;
 use crossbeam_channel::Sender;
 use crossbeam_channel::{unbounded, Receiver};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use octoproxy_lib::metric::{BackendMetric, BackendStatus};
+use octoproxy_lib::metric::BackendStatus;
 use ratatui::backend::Backend;
 use ratatui::layout::{Constraint, Corner, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -57,10 +56,6 @@ impl App {
         self.log_text = msg
     }
 
-    pub(crate) fn get_backends(&self) -> RwLockReadGuard<'_, Vec<BackendMetric>> {
-        self.fetcher.get_backends()
-    }
-
     pub(crate) fn event(&mut self, ev: Event) -> Result<()> {
         log::trace!("event: {:?}", ev);
 
@@ -106,7 +101,7 @@ impl App {
     }
 
     fn select_next_backend(&mut self) {
-        let backends = self.get_backends();
+        let backends = self.fetcher.backends.read();
         let i = match self.backends_state.selected() {
             Some(i) => {
                 if i >= backends.len() - 1 {
@@ -122,7 +117,7 @@ impl App {
     }
 
     fn select_prev_backend(&mut self) {
-        let backends = self.get_backends();
+        let backends = self.fetcher.backends.read();
         let i = match self.backends_state.selected() {
             Some(i) => {
                 if i == 0 {
@@ -155,7 +150,9 @@ impl App {
         });
 
         let count = self
-            .get_backends()
+            .fetcher
+            .backends
+            .read()
             .iter()
             .map(|b| {
                 if b.metric.status == BackendStatus::Normal {
@@ -219,7 +216,9 @@ impl App {
         let pending_id = self.fetcher.get_pending_on_id();
 
         let backends: Vec<ListItem> = self
-            .get_backends()
+            .fetcher
+            .backends
+            .read()
             .iter()
             .enumerate()
             .map(|(id, backend)| {

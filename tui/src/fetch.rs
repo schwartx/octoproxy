@@ -1,7 +1,7 @@
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, RwLock, RwLockReadGuard,
+        Arc,
     },
     thread,
     time::Duration,
@@ -10,6 +10,7 @@ use std::{
 use anyhow::Result;
 use crossbeam_channel::{tick, unbounded, Receiver, Select, Sender};
 use octoproxy_lib::metric::{BackendMetric, MetricApiReq, MetricApiResp};
+use parking_lot::RwLock;
 use tungstenite::{connect, Message};
 use url::Url;
 
@@ -21,7 +22,7 @@ pub struct Fetcher {
     inner_sender: Sender<MetricApiReq>,
     pending: Arc<AtomicBool>,
     pending_on_id: usize,
-    backends: Arc<RwLock<Vec<BackendMetric<'static>>>>,
+    pub(crate) backends: Arc<RwLock<Vec<BackendMetric<'static>>>>,
 }
 
 impl Fetcher {
@@ -62,10 +63,6 @@ impl Fetcher {
         });
 
         f
-    }
-
-    pub(crate) fn get_backends(&self) -> RwLockReadGuard<Vec<BackendMetric>> {
-        self.backends.read().unwrap()
     }
 
     pub(crate) fn get_pending_on_id(&self) -> usize {
@@ -134,19 +131,21 @@ fn run_loop(
             _ => unreachable!(),
         }?;
 
-        let req = serde_json::to_string(&req).unwrap();
-        socket.write_message(Message::Text(req)).unwrap();
+        // msgpack
+        let req = rmp_serde::to_vec(&req)?;
+        socket.write_message(Message::Binary(req))?;
 
         match socket.read_message() {
             Ok(res) => match res {
-                Message::Text(res) => {
-                    let backends_resp = serde_json::from_str::<MetricApiResp>(&res)?;
+                Message::Binary(res) => {
+                    let backends_resp = rmp_serde::from_slice::<MetricApiResp>(&res)?;
+
                     match backends_resp {
                         MetricApiResp::SwitchBackendProtocol
                         | MetricApiResp::SwitchBackendStatus
                         | MetricApiResp::ResetBackend => pending.store(false, Ordering::Relaxed),
                         MetricApiResp::AllBackends { items } => {
-                            let mut guard = backends.write().unwrap();
+                            let mut guard = backends.write();
                             *guard = items;
                             tx.send(MetricApiNotify::AllBackends).unwrap();
                         }
@@ -155,7 +154,7 @@ fn run_loop(
                         }
                     }
                 }
-                Message::Binary(_) | Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => {}
+                Message::Text(_) | Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => {}
                 Message::Close(_) => {
                     close_tx.send(()).unwrap();
                     break;
