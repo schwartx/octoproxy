@@ -46,12 +46,10 @@ async fn ws_handler(State(config): State<Arc<Config>>, ws: WebSocketUpgrade) -> 
                         Ok(req) => backend_metric_switcher(req, &config).await,
                         Err(e) => MetricApiResp::Error { msg: e.to_string() },
                     },
-                    Message::Binary(req) => {
-                        match rmp_serde::decode::from_slice::<MetricApiReq>(&req) {
-                            Ok(req) => backend_metric_switcher(req, &config).await,
-                            Err(e) => MetricApiResp::Error { msg: e.to_string() },
-                        }
-                    }
+                    Message::Binary(req) => match rmp_serde::from_slice::<MetricApiReq>(&req) {
+                        Ok(req) => backend_metric_switcher(req, &config).await,
+                        Err(e) => MetricApiResp::Error { msg: e.to_string() },
+                    },
                     Message::Ping(_) | Message::Pong(_) => {
                         continue;
                     }
