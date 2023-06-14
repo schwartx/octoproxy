@@ -8,6 +8,7 @@ use octoproxy_lib::metric::BackendStatus;
 use octoproxy_lib::proxy_client::ProxyConnector;
 use tracing::metadata::LevelFilter;
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fs::read_to_string;
 use std::io::BufRead;
@@ -213,12 +214,35 @@ impl Config {
 
     pub fn rewrite_host(&self, peer_info: &mut PeerInfo) {
         if let Some(ref h) = self.host_rewriter {
-            if let Some(s) = h.rewrite(&peer_info.host) {
+            let (host, port_str, is_default_port) = host_checker(&peer_info.host);
+
+            if let Some(host) = h.rewrite(host) {
+                info!("host is rewritten: {}", host);
+
+                let port_str = port_str.to_string();
                 peer_info.host.clear();
-                peer_info.host.push_str(s);
-                info!("host is rewritten: {}", s)
+                // "example.com" + ":" + "8080"
+                peer_info.host.push_str(host);
+                peer_info.host.push_str(":");
+                peer_info.host.push_str(&port_str);
+            } else if is_default_port {
+                let port_str = port_str.to_string();
+                let host = host.to_owned();
+                peer_info.host.clear();
+                peer_info.host.push_str(&host);
+                peer_info.host.push_str(":");
+                peer_info.host.push_str(&port_str);
             }
         }
+    }
+}
+
+/// This checks if a port number is present. If it is not, it will add the port number 80.
+/// It will also extract the host for checking and matching host rewriting rules.
+fn host_checker(host: &str) -> (&str, &str, bool) {
+    match host.rsplit_once(':') {
+        Some((host, port_str)) => (host, port_str, false),
+        None => (host.as_ref(), "80", true),
     }
 }
 
@@ -438,5 +462,23 @@ hello 127.0.0.1
 
         let res = host_rewriter.rewrite("google.com");
         assert!(res.is_none(), "google.com should not be in the rule");
+    }
+
+    #[test]
+    fn test_host_checker() {
+        let (host, port_str, is_default_port) = host_checker("example.com:80");
+        assert_eq!(host, "example.com");
+        assert_eq!(port_str, "80");
+        assert_eq!(is_default_port, false);
+
+        let (host, port_str, is_default_port) = host_checker("example.com");
+        assert_eq!(host, "example.com");
+        assert_eq!(port_str, "80");
+        assert_eq!(is_default_port, true);
+
+        let (host, port_str, is_default_port) = host_checker(":80");
+        assert_eq!(host, "");
+        assert_eq!(port_str, "80");
+        assert_eq!(is_default_port, false);
     }
 }
