@@ -223,14 +223,14 @@ impl Config {
                 peer_info.host.clear();
                 // "example.com" + ":" + "8080"
                 peer_info.host.push_str(host);
-                peer_info.host.push_str(":");
+                peer_info.host.push(':');
                 peer_info.host.push_str(&port_str);
             } else if is_default_port {
                 let port_str = port_str.to_string();
                 let host = host.to_owned();
                 peer_info.host.clear();
                 peer_info.host.push_str(&host);
-                peer_info.host.push_str(":");
+                peer_info.host.push(':');
                 peer_info.host.push_str(&port_str);
             }
         }
@@ -242,7 +242,7 @@ impl Config {
 fn host_checker(host: &str) -> (&str, &str, bool) {
     match host.rsplit_once(':') {
         Some((host, port_str)) => (host, port_str, false),
-        None => (host.as_ref(), "80", true),
+        None => (host, "80", true),
     }
 }
 
