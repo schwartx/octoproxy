@@ -3,6 +3,7 @@ metric_address = "127.0.0.1:8403"
 log_level = "info"
 # random, round_robin, least_loaded_time,uri_hash, frist
 balance = "frist"
+host_rewrite = ""
 
 # balance = "roundrobin"
 
@@ -18,9 +19,9 @@ retry_timeout = 3
 # 0 is no max retries
 max_retries = 0
 
-cacert = "./example-certs/ca.crt"
-client_key = "./example-certs/client/client.key"
-client_cert = "./example-certs/client/client.crt"
+cacert = "./assets/example-certs/ca.crt"
+client_key = "./assets/example-certs/client/client.key"
+client_cert = "./assets/example-certs/client/client.crt"
 
 http2 = { keep_alive_interval = 1, keep_alive_timeout = 1, keep_alive_while_idle = true }
 # keep_alive_interval
@@ -47,6 +48,6 @@ address = "localhost:8444"
 # retry timeout when the backend fail to connect remote server
 retry_timeout = 30
 
-cacert = "./example-certs/ca.crt"
-client_key = "./example-certs/client/client.key"
-client_cert = "./example-certs/client/client.crt"
+cacert = "./assets/example-certs/ca.crt"
+client_key = "./assets/example-certs/client/client.key"
+client_cert = "./assets/example-certs/client/client.crt"

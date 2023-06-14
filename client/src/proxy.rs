@@ -105,6 +105,8 @@ async fn handle_connection(
     inbound: IncomingConnection,
     peer: PeerInfo,
 ) -> anyhow::Result<()> {
+    // host rewrite
+
     // begin transfer
     match inbound {
         IncomingConnection::NonConnectMethod(tx, req) => {
