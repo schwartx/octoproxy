@@ -1,0 +1,17 @@
+
+listen_address = "0.0.0.0:8081"
+metric_address = "127.0.0.1:8403"
+log_level = "info"
+host_rewrite = "assets/host_rewrite.txt"
+balance = "frist"
+
+[backends]
+
+[backends.local1]
+address = "localhost:8443"
+retry_timeout = 1
+max_retries = 0
+cacert = "assets/certs/ca.crt"
+client_key = "assets/certs/client.key"
+client_cert = "assets/certs/client.crt"
+protocol = "http2"

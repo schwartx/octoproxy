@@ -3,9 +3,9 @@ max_concurrent_tasks = 32
 
 listen_address = "0.0.0.0:8443"
 
-auth_key = "./example-certs/server/server.key"
-auth_cert = "./example-certs/server/server.crt"
+auth_key = "./assets/example-certs/server/server.key"
+auth_cert = "./assets/example-certs/server/server.crt"
 
 # trusted client CAs
-client_ca = "./example-certs/ca.crt"
+client_ca = "./assets/example-certs/ca.crt"
 quic = true
