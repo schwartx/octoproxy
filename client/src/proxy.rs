@@ -103,9 +103,10 @@ async fn listen_incoming_connection(
 async fn handle_connection(
     config: Arc<Config>,
     inbound: IncomingConnection,
-    peer: PeerInfo,
+    mut peer: PeerInfo,
 ) -> anyhow::Result<()> {
     // host rewrite
+    config.rewrite_host(&mut peer);
 
     // begin transfer
     match inbound {
