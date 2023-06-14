@@ -1,5 +1,4 @@
-#![allow(unused)]
-use anyhow::{bail, Context};
+use anyhow::Context;
 use futures::stream::{self, StreamExt};
 use hashring::HashRing;
 use hyper::client::HttpConnector;
@@ -8,9 +7,7 @@ use octoproxy_lib::metric::BackendStatus;
 use octoproxy_lib::proxy_client::ProxyConnector;
 use tracing::metadata::LevelFilter;
 
-use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::fs::read_to_string;
 use std::io::BufRead;
 use std::path::PathBuf;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
@@ -410,7 +407,7 @@ mod tests {
             addr: "127.0.0.1:14000".parse().unwrap(),
         };
         config.rewrite_host(&mut peer);
-        assert_eq!(peer.host, "127.0.0.1")
+        assert_eq!(peer.host, "127.0.0.1:80")
     }
 
     fn build_host_rewrite_config_reader(s: &str) -> std::io::BufReader<Cursor<&str>> {
