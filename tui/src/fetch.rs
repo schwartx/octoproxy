@@ -9,51 +9,60 @@ use std::{
 
 use anyhow::Result;
 use crossbeam_channel::{tick, unbounded, Receiver, Select, Sender};
-use octoproxy_lib::metric::MetricApiReq;
+use octoproxy_lib::metric::{BackendMetric, MetricApiReq, MetricApiResp};
+use parking_lot::RwLock;
 use tungstenite::{connect, Message};
 use url::Url;
 
-use crate::MetricApiResp;
+use crate::MetricApiNotify;
 
 pub static BACKENDS_FETCHER_INTERVAL: Duration = Duration::from_millis(500);
 
 pub struct Fetcher {
-    receiver: Receiver<MetricApiResp>,
     inner_sender: Sender<MetricApiReq>,
     pending: Arc<AtomicBool>,
     pending_on_id: usize,
+    pub(crate) backends: Arc<RwLock<Vec<BackendMetric<'static>>>>,
 }
 
 impl Fetcher {
-    pub(crate) fn new(url: String, close_tx: Sender<()>) -> Self {
-        let (sender, receiver) = unbounded();
+    pub(crate) fn new(
+        url: String,
+        tx_fetcher: Sender<MetricApiNotify>,
+        close_tx: Sender<()>,
+    ) -> Self {
         let (inner_sender, inner_receiver) = unbounded();
         let pending = Arc::new(AtomicBool::new(false));
         let pending_t = pending.clone();
 
+        let backends: Arc<RwLock<Vec<BackendMetric>>> = Arc::new(RwLock::new(Vec::new()));
+
+        let f = Self {
+            inner_sender,
+            pending,
+            pending_on_id: 0,
+            backends: backends.clone(),
+        };
+
         thread::spawn(move || {
-            match run_loop(&url, sender.clone(), inner_receiver, pending_t, close_tx) {
+            match run_loop(
+                &url,
+                tx_fetcher.clone(),
+                inner_receiver,
+                pending_t,
+                close_tx,
+                backends,
+            ) {
                 Ok(_) => {}
                 Err(e) => {
-                    sender
-                        .send(MetricApiResp::Error {
-                            msg: format!("{:?}", e),
-                        })
+                    tx_fetcher
+                        .send(MetricApiNotify::Error(format!("{:?}", e)))
                         .unwrap_or(());
                 }
             }
         });
 
-        Self {
-            inner_sender,
-            receiver,
-            pending,
-            pending_on_id: 0,
-        }
-    }
-
-    pub(crate) fn get_receiver(&self) -> Receiver<MetricApiResp> {
-        self.receiver.clone()
+        f
     }
 
     pub(crate) fn get_pending_on_id(&self) -> usize {
@@ -101,10 +110,11 @@ impl Fetcher {
 
 fn run_loop(
     url: &str,
-    tx: Sender<MetricApiResp>,
+    tx: Sender<MetricApiNotify>,
     inner_receiver: Receiver<MetricApiReq>,
     pending: Arc<AtomicBool>,
     close_tx: Sender<()>,
+    backends: Arc<RwLock<Vec<BackendMetric>>>,
 ) -> Result<()> {
     let (mut socket, _) = connect(Url::parse(url)?)?;
     let ticker = tick(BACKENDS_FETCHER_INTERVAL);
@@ -121,26 +131,30 @@ fn run_loop(
             _ => unreachable!(),
         }?;
 
-        let req = serde_json::to_string(&req).unwrap();
-        socket.write_message(Message::Text(req)).unwrap();
+        // msgpack
+        let req = rmp_serde::to_vec(&req)?;
+        socket.write_message(Message::Binary(req))?;
 
         match socket.read_message() {
             Ok(res) => match res {
-                Message::Text(res) => {
-                    let backends = serde_json::from_str::<MetricApiResp>(&res)?;
-                    match backends {
+                Message::Binary(res) => {
+                    let backends_resp = rmp_serde::from_slice::<MetricApiResp>(&res)?;
+
+                    match backends_resp {
                         MetricApiResp::SwitchBackendProtocol
                         | MetricApiResp::SwitchBackendStatus
                         | MetricApiResp::ResetBackend => pending.store(false, Ordering::Relaxed),
                         MetricApiResp::AllBackends { items } => {
-                            tx.send(MetricApiResp::AllBackends { items }).unwrap();
+                            let mut guard = backends.write();
+                            *guard = items;
+                            tx.send(MetricApiNotify::AllBackends).unwrap();
                         }
                         MetricApiResp::Error { msg } => {
-                            tx.send(MetricApiResp::Error { msg }).unwrap();
+                            tx.send(MetricApiNotify::Error(msg)).unwrap();
                         }
                     }
                 }
-                Message::Binary(_) | Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => {}
+                Message::Text(_) | Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => {}
                 Message::Close(_) => {
                     close_tx.send(()).unwrap();
                     break;

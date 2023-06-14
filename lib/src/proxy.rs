@@ -1,59 +1,25 @@
 use std::{fmt::Display, pin::Pin};
 
-use anyhow::bail;
 use bytes::{Bytes, BytesMut};
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
+    io::{AsyncRead, AsyncReadExt, AsyncWrite},
     net::TcpStream,
 };
-use tokio_stream::StreamExt;
-use tokio_util::codec::{Decoder, Framed};
-use tracing::{debug, trace};
+use tracing::debug;
 
-struct HttpCodec;
-
-struct ReqInfoGetter<I> {
-    inbound: I,
-}
-
-impl<I> ReqInfoGetter<I>
+pub async fn tunnel<I>(mut inbound: I) -> anyhow::Result<()>
 where
     I: AsyncRead + AsyncWrite + Unpin + Send,
 {
-    async fn get(self) -> anyhow::Result<(RequestInfo, I)> {
-        let mut transport = Framed::new(self.inbound, HttpCodec);
-        let request_info = loop {
-            match transport.next().await {
-                Some(Ok(req)) => {
-                    debug!("{}", req);
-                    break req;
-                }
-                Some(Err(e)) => {
-                    debug!("{:?}", e);
-                    bail!(e);
-                }
-                None => {}
-            }
-        };
+    let url_len = inbound.read_u16().await?;
 
-        let inbound = transport.into_inner();
-        Ok((request_info, inbound))
-    }
-}
+    let mut buf = BytesMut::with_capacity(url_len as usize);
+    inbound.read_buf(&mut buf).await?;
 
-pub async fn tunnel<I>(inbound: I) -> anyhow::Result<()>
-where
-    I: AsyncRead + AsyncWrite + Unpin + Send,
-{
-    let (request_info, mut inbound) = ReqInfoGetter { inbound }.get().await?;
+    let url = std::str::from_utf8(&buf)?;
 
-    // dont have to check again if reusing a connection
-    if http::Method::CONNECT != request_info.method {
-        bail!("Only support CONNECT");
-    }
-
-    let mut outbound = TcpStream::connect(&request_info.path).await?;
-    debug!("Established tunnel: {}", request_info.path);
+    let mut outbound = TcpStream::connect(url).await?;
+    debug!("Established tunnel: {}", url);
     tokio::io::copy_bidirectional(&mut inbound, &mut outbound).await?;
     Ok(())
 }
@@ -74,66 +40,6 @@ impl Display for RequestInfo {
             "host: {:?}\npath: {}\nmeth: {}\n",
             self.host, self.path, self.method
         )
-    }
-}
-
-impl Decoder for HttpCodec {
-    type Item = RequestInfo;
-
-    type Error = anyhow::Error;
-
-    fn decode(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        if buf.is_empty() {
-            bail!("parse called with empty buf");
-        }
-
-        let path;
-        let host;
-        let slice;
-        let method;
-        let mut headers = [httparse::EMPTY_HEADER; 16];
-        let mut req = httparse::Request::new(&mut headers);
-
-        match req.parse(buf) {
-            Ok(httparse::Status::Complete(parsed_len)) => {
-                trace!("Request.parse Complete({})", parsed_len);
-                method = http::Method::from_bytes(req.method.unwrap().as_bytes())?;
-
-                path = match req.path {
-                    Some(path) => <&str>::clone(&path).to_owned(),
-                    None => String::from(""),
-                };
-                let hosts = req
-                    .headers
-                    .iter()
-                    .filter_map(|s| {
-                        if s.name.to_lowercase() == "host" {
-                            Some(String::from_utf8_lossy(s.value).to_string())
-                        } else {
-                            None
-                        }
-                    })
-                    .take(1)
-                    .collect::<Vec<_>>();
-
-                if hosts.len() == 1 {
-                    host = Some(hosts[0].to_owned());
-                } else {
-                    host = None;
-                }
-                slice = buf.split_to(parsed_len);
-            }
-            Ok(httparse::Status::Partial) => return Ok(None),
-            Err(err) => {
-                bail!(err);
-            }
-        };
-        Ok(Some(RequestInfo {
-            host,
-            header: slice.freeze(),
-            method,
-            path,
-        }))
     }
 }
 

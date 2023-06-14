@@ -10,24 +10,18 @@ edition = "2021"
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
-serde_json = { workspace = true }
+rmp-serde = "1.1.1"
 url = { workspace = true }
 serde = { workspace = true }
-
-reqwest = { version = "0.11.16", default-features = false, features = [
-    "blocking",
-] }
-
 ratatui = { version = "0.20", default-features = false, features = [
     'crossterm',
     'serde',
 ] }
 crossterm = { version = "0.26.1", features = ["serde"] }
 scopeguard = "1.1.0"
-backtrace = "0.3.67"
 crossbeam-channel = "0.5.8"
 log = "0.4.17"
 env_logger = "0.10.0"
 tungstenite = "0.19.0"
-
+parking_lot = { workspace = true }
 octoproxy-lib = { path = "../lib", version = "0.1.0" }

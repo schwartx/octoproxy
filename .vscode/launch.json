@@ -4,21 +4,22 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'octoproxy-client'",
+            "name": "Debug executable 'client'",
             "env": {
                 "RUST_LOG": "debug"
             },
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=octoproxy-client",
+                    "--bin=octoproxy",
                 ],
                 "filter": {
-                    "name": "octoproxy-client",
+                    "name": "octoproxy",
                     "kind": "bin"
                 }
             },
             "args": [
+                "client",
                 "-c",
                 "./client/config.toml"
             ],
@@ -27,58 +28,25 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'octoproxy-server'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=octoproxy-server",
-                ],
-                "filter": {
-                    "name": "octoproxy-server",
-                    "kind": "bin"
-                }
-            },
+            "name": "Debug executable 'tui'",
             "env": {
                 "RUST_LOG": "debug"
             },
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=octoproxy",
+                ],
+                "filter": {
+                    "name": "octoproxy",
+                    "kind": "bin"
+                }
+            },
             "args": [
-                "-c",
-                "server/config.toml",
+                "tui",
+                "-p",
+                "8403"
             ],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug executable 'octoproxy-easycert'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=octoproxy-easycert",
-                ],
-                "filter": {
-                    "name": "octoproxy-easycert",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug executable 'tui'",
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=tui",
-                ],
-                "filter": {
-                    "name": "tui",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
             "cwd": "${workspaceFolder}"
         },
     ]

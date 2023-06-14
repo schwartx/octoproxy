@@ -19,18 +19,13 @@ http = { workspace = true }
 serde = { workspace = true }
 url = { workspace = true }
 tokio-rustls = { workspace = true }
-tokio-util = { workspace = true, features = ["codec"] }
-
 hyper = { workspace = true, default-features = false, features = [
     "backports",
     "server",
     "http2",
     "runtime",
 ] }
-
 quinn = { workspace = true }
-
-tokio-stream = "0.1.12"
 
 octoproxy-lib = { path = "../lib", version = "0.1.0" }
 

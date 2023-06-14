@@ -1,4 +1,5 @@
-use anyhow::Context;
+#![allow(unused)]
+use anyhow::{bail, Context};
 use futures::stream::{self, StreamExt};
 use hashring::HashRing;
 use hyper::client::HttpConnector;
@@ -7,6 +8,11 @@ use octoproxy_lib::metric::BackendStatus;
 use octoproxy_lib::proxy_client::ProxyConnector;
 use tracing::metadata::LevelFilter;
 
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::fs::read_to_string;
+use std::io::BufRead;
+use std::path::PathBuf;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use octoproxy_lib::config::{parse_log_level_str, parse_socket_address, TomlFileConfig};
@@ -28,6 +34,7 @@ struct FileConfig {
     listen_address: String,
     log_level: String,
     balance: Balance,
+    host_rewrite: Option<PathBuf>,
     /// listen address for metric service
     metric_address: String,
     backends: HashMap<String, FileBackendConfig>,
@@ -43,6 +50,8 @@ pub(crate) struct Config {
     pub(crate) balance: Box<dyn LoadBalancingAlgorithm<ConfigBackend> + Send + Sync + 'static>,
     pub(crate) backends: Vec<ConfigBackend>,
 
+    host_rewriter: Option<HostRewriter>,
+
     pub(crate) non_connect_method_client: Client<ProxyConnector<HttpConnector>>,
 }
 
@@ -50,6 +59,41 @@ pub(crate) struct Config {
 pub(crate) struct ConfigBackend {
     pub(crate) backend: Arc<RwLock<Backend>>,
     pub(crate) metric: Arc<Metric>,
+}
+
+struct HostRewriter {
+    hosts: BTreeMap<String, String>,
+}
+
+impl HostRewriter {
+    fn new(host_rewrite_file: impl std::io::Read) -> anyhow::Result<Option<Self>> {
+        let buf = std::io::BufReader::new(host_rewrite_file);
+        let mut hosts = BTreeMap::new();
+
+        for line in buf.lines() {
+            let line = line.context("Failed to get line")?;
+            if line.is_empty() {
+                continue;
+            }
+
+            let parts: Vec<&str> = line.split(' ').collect();
+            if parts.len() != 2 {
+                // ignore this
+                continue;
+            }
+
+            hosts.insert(parts[0].to_string(), parts[1].to_string());
+        }
+
+        if hosts.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(Self { hosts }))
+    }
+
+    fn rewrite(&self, request_host: &str) -> Option<&str> {
+        self.hosts.get(request_host).map(|x| x.as_str())
+    }
 }
 
 impl Config {
@@ -81,12 +125,22 @@ impl Config {
         let non_connect_method_client =
             hyper::client::Client::builder().build::<_, hyper::Body>(proxy);
 
+        let host_rewriter = if let Some(host_rewriter) = file_config.host_rewrite {
+            let host_rewriter =
+                std::fs::File::open(host_rewriter).context("Failed to open host rewrite file")?;
+
+            HostRewriter::new(host_rewriter).context("Failed to parse host rewrite config")?
+        } else {
+            None
+        };
+
         let mut config = Self {
             listen_address,
             backends: Vec::new(),
             balance: Box::new(Frist),
             metric_address,
             log_level,
+            host_rewriter,
             non_connect_method_client,
         };
 
@@ -157,11 +211,44 @@ impl Config {
                 .map(|b| b.backend)
         }
     }
+
+    pub fn rewrite_host(&self, peer_info: &mut PeerInfo) {
+        if let Some(ref h) = self.host_rewriter {
+            let (host, port_str, is_default_port) = host_checker(&peer_info.host);
+
+            if let Some(host) = h.rewrite(host) {
+                info!("host is rewritten: {}", host);
+
+                let port_str = port_str.to_string();
+                peer_info.host.clear();
+                // "example.com" + ":" + "8080"
+                peer_info.host.push_str(host);
+                peer_info.host.push(':');
+                peer_info.host.push_str(&port_str);
+            } else if is_default_port {
+                let port_str = port_str.to_string();
+                let host = host.to_owned();
+                peer_info.host.clear();
+                peer_info.host.push_str(&host);
+                peer_info.host.push(':');
+                peer_info.host.push_str(&port_str);
+            }
+        }
+    }
+}
+
+/// This checks if a port number is present. If it is not, it will add the port number 80.
+/// It will also extract the host for checking and matching host rewriting rules.
+fn host_checker(host: &str) -> (&str, &str, bool) {
+    match host.rsplit_once(':') {
+        Some((host, port_str)) => (host, port_str, false),
+        None => (host, "80", true),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{io::Cursor, path::PathBuf};
 
     use super::*;
     use tokio::{net::TcpListener, sync::Mutex};
@@ -308,5 +395,90 @@ mod tests {
         };
         let retries = retries.lock().await;
         assert_eq!(max_retries, *retries, "max_retries is wrong");
+    }
+
+    #[tokio::test]
+    async fn test_config_host_rewrite() {
+        let config = Config::new(Cmd {
+            listen_address: Some("8080".to_owned()),
+            config: PathBuf::from("assets/testconfig/host_rewrite_client.toml"),
+        })
+        .unwrap();
+
+        let mut peer = PeerInfo {
+            host: "hello.com".to_string(),
+            addr: "127.0.0.1:14000".parse().unwrap(),
+        };
+        config.rewrite_host(&mut peer);
+        assert_eq!(peer.host, "127.0.0.1")
+    }
+
+    fn build_host_rewrite_config_reader(s: &str) -> std::io::BufReader<Cursor<&str>> {
+        std::io::BufReader::new(Cursor::new(s))
+    }
+
+    #[test]
+    fn test_new_host_rewriter() {
+        let host_rewrite_file = r#"
+example.com hello.com
+
+hello 127.0.0.1
+        "#;
+        let host_rewrite_file = build_host_rewrite_config_reader(host_rewrite_file);
+        let host_rewriter = HostRewriter::new(host_rewrite_file).unwrap();
+        assert!(host_rewriter.is_some(), "parse normal config");
+
+        let host_rewrite_file = r#"
+
+        "#;
+        let host_rewrite_file = build_host_rewrite_config_reader(host_rewrite_file);
+        let host_rewriter = HostRewriter::new(host_rewrite_file).unwrap();
+        assert!(host_rewriter.is_none(), "parse empty config");
+
+        let host_rewrite_file = r#"
+aaaaaaaaaaaaaaaaa
+        "#;
+        let host_rewrite_file = build_host_rewrite_config_reader(host_rewrite_file);
+        let host_rewriter = HostRewriter::new(host_rewrite_file).unwrap();
+        assert!(host_rewriter.is_none(), "parse invalid config")
+    }
+
+    #[test]
+    fn test_host_rewriter_rewrite() {
+        let host_rewrite_file = r#"
+example.com hello.com
+
+hello 127.0.0.1
+        "#;
+        let host_rewrite_file = build_host_rewrite_config_reader(host_rewrite_file);
+        let host_rewriter = HostRewriter::new(host_rewrite_file).unwrap();
+        assert!(host_rewriter.is_some(), "parse normal config");
+
+        let host_rewriter = host_rewriter.unwrap();
+        let res = host_rewriter.rewrite("example.com");
+        assert!(res.is_some(), "example.com should be in the rule");
+        let res = res.unwrap();
+        assert_eq!(res, "hello.com", "rewrite example.com into hello.com");
+
+        let res = host_rewriter.rewrite("google.com");
+        assert!(res.is_none(), "google.com should not be in the rule");
+    }
+
+    #[test]
+    fn test_host_checker() {
+        let (host, port_str, is_default_port) = host_checker("example.com:80");
+        assert_eq!(host, "example.com");
+        assert_eq!(port_str, "80");
+        assert_eq!(is_default_port, false);
+
+        let (host, port_str, is_default_port) = host_checker("example.com");
+        assert_eq!(host, "example.com");
+        assert_eq!(port_str, "80");
+        assert_eq!(is_default_port, true);
+
+        let (host, port_str, is_default_port) = host_checker(":80");
+        assert_eq!(host, "");
+        assert_eq!(port_str, "80");
+        assert_eq!(is_default_port, false);
     }
 }

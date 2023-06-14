@@ -14,12 +14,10 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tab
 use ratatui::Frame;
 
 use crate::fetch::Fetcher;
-use crate::{BackendMetric, MetricApiResp};
 
 static POLL_DURATION: Duration = Duration::from_millis(1000);
 
 pub struct App {
-    backends: Vec<BackendMetric>,
     backends_state: ListState,
 
     fetcher: Fetcher,
@@ -29,14 +27,10 @@ pub struct App {
 
 impl App {
     pub(crate) fn new(fetcher: Fetcher) -> Result<Self> {
-        // let backends = fetcher.get_all_backends()?;
         let mut backends_state = ListState::default();
         backends_state.select(Some(0));
 
-        let backends = Vec::new();
-
         Ok(Self {
-            backends,
             fetcher,
             backends_state,
             do_quit: false,
@@ -58,18 +52,8 @@ impl App {
         false
     }
 
-    pub(crate) fn handle_fetch(&mut self, fetch: MetricApiResp) {
-        match fetch {
-            MetricApiResp::AllBackends { items } => {
-                self.backends = items;
-            }
-
-            MetricApiResp::SwitchBackendStatus
-            | MetricApiResp::ResetBackend
-            | MetricApiResp::SwitchBackendProtocol => {}
-
-            MetricApiResp::Error { msg } => self.log_text = msg,
-        }
+    pub(crate) fn set_error(&mut self, msg: String) {
+        self.log_text = msg
     }
 
     pub(crate) fn event(&mut self, ev: Event) -> Result<()> {
@@ -117,9 +101,10 @@ impl App {
     }
 
     fn select_next_backend(&mut self) {
+        let backends = self.fetcher.backends.read();
         let i = match self.backends_state.selected() {
             Some(i) => {
-                if i >= self.backends.len() - 1 {
+                if i >= backends.len() - 1 {
                     0
                 } else {
                     i + 1
@@ -127,20 +112,23 @@ impl App {
             }
             None => 0,
         };
+        drop(backends);
         self.backends_state.select(Some(i));
     }
 
     fn select_prev_backend(&mut self) {
+        let backends = self.fetcher.backends.read();
         let i = match self.backends_state.selected() {
             Some(i) => {
                 if i == 0 {
-                    self.backends.len() - 1
+                    backends.len() - 1
                 } else {
                     i - 1
                 }
             }
             None => 0,
         };
+        drop(backends);
         self.backends_state.select(Some(i));
     }
 
@@ -162,7 +150,9 @@ impl App {
         });
 
         let count = self
+            .fetcher
             .backends
+            .read()
             .iter()
             .map(|b| {
                 if b.metric.status == BackendStatus::Normal {
@@ -226,7 +216,9 @@ impl App {
         let pending_id = self.fetcher.get_pending_on_id();
 
         let backends: Vec<ListItem> = self
+            .fetcher
             .backends
+            .read()
             .iter()
             .enumerate()
             .map(|(id, backend)| {

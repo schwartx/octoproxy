@@ -4,7 +4,7 @@ use std::{
 };
 
 use clap::Parser;
-use crossbeam_channel::{bounded, tick, Receiver, Select};
+use crossbeam_channel::{bounded, tick, unbounded, Receiver, Select};
 use crossterm::{
     event::Event,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -12,7 +12,6 @@ use crossterm::{
 };
 
 use anyhow::{bail, Result};
-use octoproxy_lib::metric::MetricData;
 use ratatui::{
     backend::{Backend, CrosstermBackend},
     Terminal,
@@ -32,23 +31,13 @@ mod spinner;
 
 static SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 
-/// TODO use lib's BackendMetric
 #[derive(Serialize, Deserialize)]
-pub(crate) struct BackendMetric {
-    pub backend_name: String,
-    pub domain: String,
-    pub address: String,
-    pub metric: MetricData,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub(crate) enum MetricApiResp {
+pub(crate) enum MetricApiNotify {
     SwitchBackendStatus,
     SwitchBackendProtocol,
     ResetBackend,
-    AllBackends { items: Vec<BackendMetric> },
-    Error { msg: String },
+    AllBackends,
+    Error(String),
 }
 
 /// TUI commandline args
@@ -83,11 +72,12 @@ fn run_app(
 ) -> Result<(), anyhow::Error> {
     let (close_tx, close_rx) = bounded::<()>(1);
     let address = format!("ws://localhost:{}/", port);
-    let fetcher = Fetcher::new(address, close_tx);
+
+    let (tx_fetcher, rx_fetcher) = unbounded();
+    let fetcher = Fetcher::new(address, tx_fetcher, close_tx);
 
     let rx_input = input.receiver();
     let rx_spinner = tick(SPINNER_INTERVAL);
-    let rx_fetcher = fetcher.get_receiver();
 
     let mut app = App::new(fetcher)?;
     let mut spinner = Spinner::default();
@@ -105,13 +95,12 @@ fn run_app(
             QueueEvent::InputEvent(e) => {
                 app.event(e)?;
             }
-            QueueEvent::Fetch(res) => {
-                app.handle_fetch(res);
-            }
-            QueueEvent::SpinnerUpdate => unreachable!(),
+            QueueEvent::Fetch(MetricApiNotify::Error(msg)) => app.set_error(msg),
+            QueueEvent::Fetch(_) => {}
             QueueEvent::AppClose => {
                 break;
             }
+            QueueEvent::SpinnerUpdate => unreachable!(),
         }
 
         draw(terminal, &mut app)?;
@@ -139,7 +128,7 @@ fn draw<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()>
 fn select_event(
     rx_input: &Receiver<Event>,
     rx_spinner: &Receiver<Instant>,
-    rx_fetcher: &Receiver<MetricApiResp>,
+    rx_fetcher: &Receiver<MetricApiNotify>,
     close_rx: &Receiver<()>,
 ) -> Result<QueueEvent> {
     let mut sel = Select::new();
@@ -166,7 +155,7 @@ fn select_event(
 pub(crate) enum QueueEvent {
     AppClose,
     SpinnerUpdate,
-    Fetch(MetricApiResp),
+    Fetch(MetricApiNotify),
     InputEvent(Event),
 }
 
