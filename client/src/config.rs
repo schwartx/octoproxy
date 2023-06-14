@@ -372,7 +372,21 @@ mod tests {
         assert_eq!(max_retries, *retries, "max_retries is wrong");
     }
 
-    // host rewriter part
+    #[tokio::test]
+    async fn test_config_host_rewrite() {
+        let config = Config::new(Cmd {
+            listen_address: Some("8080".to_owned()),
+            config: PathBuf::from("assets/testconfig/host_rewrite_client.toml"),
+        })
+        .unwrap();
+
+        let mut peer = PeerInfo {
+            host: "hello.com".to_string(),
+            addr: "127.0.0.1:14000".parse().unwrap(),
+        };
+        config.rewrite_host(&mut peer);
+        assert_eq!(peer.host, "127.0.0.1")
+    }
 
     fn build_host_rewrite_config_reader(s: &str) -> std::io::BufReader<Cursor<&str>> {
         std::io::BufReader::new(Cursor::new(s))
