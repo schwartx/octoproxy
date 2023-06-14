@@ -216,7 +216,7 @@ impl Config {
             if let Some(s) = h.rewrite(&peer_info.host) {
                 peer_info.host.clear();
                 peer_info.host.push_str(s);
-                info!("host is rewritted: {}", s)
+                info!("host is rewritten: {}", s)
             }
         }
     }
