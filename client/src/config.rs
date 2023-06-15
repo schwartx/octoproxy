@@ -233,7 +233,7 @@ impl Config {
         }
     }
 
-    pub fn rewrite_host(&self, peer_info: &mut PeerInfo) {
+    pub(crate) fn rewrite_host(&self, peer_info: &mut PeerInfo) {
         if let Some(ref h) = self.host_modifier {
             let (host, port_str, is_default_port) = host_checker(&peer_info.host);
 
@@ -263,8 +263,9 @@ impl Config {
         config_backend: &'a ConfigBackend,
     ) -> Option<&'a ConfigBackend> {
         if let Some(ref host_modifier) = self.host_modifier {
-            if let Some(spec_backen_name) = host_modifier.route(req_host) {
-                if spec_backen_name == config_backend.metric.backend_name {
+            if let Some(spec_backend_name) = host_modifier.route(req_host) {
+                if spec_backend_name == config_backend.metric.backend_name {
+                    info!("choosing backend: {}", spec_backend_name);
                     // give back the backend
                     return Some(config_backend);
                 } else {
