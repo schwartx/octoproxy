@@ -25,7 +25,7 @@ _Octoproxy_ is a load balancing proxy that draws inspiration from the remarkable
 - `easycert`: The `octoproxy-easycert` is a convenient mTLS certificate generation tool.
 - `lib`: The `octoproxy-lib` provides foundational common code.
 - `server`: The `octoproxy-server` handles client requests on the server-side.
-- `tui`: The `octui` is a terminal-based UI for managing and monitoring the client.
+- `tui`: The `octoproxy-tui` is a terminal-based UI for managing and monitoring the client.
 
 ## Quickstart
 
