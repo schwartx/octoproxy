@@ -23,7 +23,6 @@ cacert = "./assets/example-certs/ca.crt"
 client_key = "./assets/example-certs/client/client.key"
 client_cert = "./assets/example-certs/client/client.crt"
 
-http2 = { keep_alive_interval = 1, keep_alive_timeout = 1, keep_alive_while_idle = true }
 # keep_alive_interval
 # Sets an interval for HTTP2 Ping frames should be sent to keep a connection alive.
 
@@ -35,9 +34,22 @@ http2 = { keep_alive_interval = 1, keep_alive_timeout = 1, keep_alive_while_idle
 # Sets whether HTTP2 keep-alive should apply while the connection is idle.
 # If disabled, keep-alive pings are only sent while there are open request/responses streams.
 # If enabled, pings are also sent when no streams are active.
+http2 = { keep_alive_interval = 1, keep_alive_timeout = 1, keep_alive_while_idle = true }
 
 # bbr, cubic
 quic = { max_idle_timeout = 200, keep_alive_interval = 0, ipv4_only = true, expected_rtt = 300, max_stream_bandwidth = 2097152, congestion = "bbr" }
+status = "force_closed"
+
+# local server 1
+[backends.local2]
+protocol = "http2"
+address = "localhost:8443"
+retry_timeout = 3
+max_retries = 0
+cacert = "./assets/example-certs/ca.crt"
+client_key = "./assets/example-certs/client/client.key"
+client_cert = "./assets/example-certs/client/client.crt"
+http2 = { keep_alive_interval = 1, keep_alive_timeout = 1, keep_alive_while_idle = true }
 
 # server 2
 [backends.remote1]
