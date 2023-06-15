@@ -97,9 +97,7 @@ impl HostRewriter {
 
 // modifier
 #[derive(Debug, Deserialize)]
-struct HostModifier {
-    hosts: BTreeMap<String, HostModifySection>,
-}
+struct HostModifier(BTreeMap<String, HostModifySection>);
 
 #[derive(Debug, Deserialize)]
 struct HostModifySection {
@@ -115,15 +113,15 @@ impl HostModifier {
             Self::load_from_read(host_file).context("Failed to parse host modify toml")?;
 
         let mut map = BTreeMap::new();
-        for (sec_name, sec) in this.hosts {
-            if sec.rewrite.is_none() && sec.rewrite.is_none() {
+        for (sec_name, sec) in this.0 {
+            if sec.rewrite.is_none() && sec.backend.is_none() {
                 continue;
             }
             map.insert(sec_name, sec);
         }
-        this.hosts = map;
+        this.0 = map;
 
-        if this.hosts.is_empty() {
+        if this.0.is_empty() {
             return Ok(None);
         }
         Ok(Some(this))
@@ -133,18 +131,18 @@ impl HostModifier {
         if let Some(&HostModifySection {
             rewrite: Some(ref r),
             backend: _,
-        }) = self.hosts.get(req_host)
+        }) = self.0.get(req_host)
         {
             return Some(&r);
         }
         None
     }
 
-    fn choose_backend(&self, req_host: &str) -> Option<&str> {
+    fn route(&self, req_host: &str) -> Option<&str> {
         if let Some(&HostModifySection {
             rewrite: _,
             backend: Some(ref r),
-        }) = self.hosts.get(req_host)
+        }) = self.0.get(req_host)
         {
             return Some(&r);
         }
@@ -469,54 +467,106 @@ mod tests {
         assert_eq!(peer.host, "127.0.0.1:80")
     }
 
-    fn build_host_rewrite_config_reader(s: &str) -> std::io::BufReader<Cursor<&str>> {
+    fn build_config_reader(s: &str) -> std::io::BufReader<Cursor<&str>> {
         std::io::BufReader::new(Cursor::new(s))
     }
 
     #[test]
-    fn test_new_host_rewriter() {
-        let host_rewrite_file = r#"
-example.com hello.com
+    fn test_new_host_modifier() {
+        let host_modifier_file = r#"
+["example.com"]
+rewrite = "hello.com"
+backend = "local1"
 
-hello 127.0.0.1
+[hello]
+rewrite = "127.0.0.1"
+
+[world]
+
         "#;
-        let host_rewrite_file = build_host_rewrite_config_reader(host_rewrite_file);
-        let host_rewriter = HostRewriter::new(host_rewrite_file).unwrap();
-        assert!(host_rewriter.is_some(), "parse normal config");
+        let host_modify_file = build_config_reader(host_modifier_file);
+        let host_modifier = HostModifier::new(host_modify_file).unwrap();
+        assert!(host_modifier.is_some(), "parse normal config");
 
-        let host_rewrite_file = r#"
+        let host_modify_file = r#"
 
         "#;
-        let host_rewrite_file = build_host_rewrite_config_reader(host_rewrite_file);
-        let host_rewriter = HostRewriter::new(host_rewrite_file).unwrap();
-        assert!(host_rewriter.is_none(), "parse empty config");
+        let host_modify_file = build_config_reader(host_modify_file);
+        let host_modifier = HostModifier::new(host_modify_file).unwrap();
+        assert!(host_modifier.is_none(), "parse empty config");
 
-        let host_rewrite_file = r#"
+        let host_modify_file = r#"
+[hello]
+
+[world]
+        "#;
+        let host_modify_file = build_config_reader(host_modify_file);
+        let host_modifier = HostModifier::new(host_modify_file).unwrap();
+        assert!(host_modifier.is_none(), "parse empty sections config");
+
+        let host_modify_file = r#"
 aaaaaaaaaaaaaaaaa
         "#;
-        let host_rewrite_file = build_host_rewrite_config_reader(host_rewrite_file);
-        let host_rewriter = HostRewriter::new(host_rewrite_file).unwrap();
-        assert!(host_rewriter.is_none(), "parse invalid config")
+        let host_modify_file = build_config_reader(host_modify_file);
+        let host_modifier = HostModifier::new(host_modify_file);
+        assert!(host_modifier.is_err(), "parse invalid config");
+
+        let host_modify_file = r#"
+[hello]
+[hello]
+        "#;
+        let host_modify_file = build_config_reader(host_modify_file);
+        let host_modifier = HostModifier::new(host_modify_file);
+        assert!(host_modifier.is_err(), "parse dup sections config")
     }
 
     #[test]
-    fn test_host_rewriter_rewrite() {
-        let host_rewrite_file = r#"
-example.com hello.com
+    fn test_host_modifier_rewrite() {
+        let host_modify_file = r#"
+["example.com"]
+rewrite = "hello.com"
+backend = "local1"
 
-hello 127.0.0.1
+[hello]
+rewrite = "127.0.0.1"
         "#;
-        let host_rewrite_file = build_host_rewrite_config_reader(host_rewrite_file);
-        let host_rewriter = HostRewriter::new(host_rewrite_file).unwrap();
-        assert!(host_rewriter.is_some(), "parse normal config");
+        let host_modify_file = build_config_reader(host_modify_file);
+        let host_modifier = HostModifier::new(host_modify_file).unwrap();
+        assert!(host_modifier.is_some(), "parse normal config");
 
-        let host_rewriter = host_rewriter.unwrap();
-        let res = host_rewriter.rewrite("example.com");
+        let host_modifier = host_modifier.unwrap();
+
+        let res = host_modifier.rewrite("example.com");
         assert!(res.is_some(), "example.com should be in the rule");
         let res = res.unwrap();
         assert_eq!(res, "hello.com", "rewrite example.com into hello.com");
 
-        let res = host_rewriter.rewrite("google.com");
+        let res = host_modifier.rewrite("google.com");
+        assert!(res.is_none(), "google.com should not be in the rule");
+    }
+
+    #[test]
+    fn test_host_modifier_route() {
+        let host_modify_file = r#"
+["example.com"]
+rewrite = "hello.com"
+backend = "local1"
+
+[hello]
+rewrite = "127.0.0.1"
+        "#;
+        let host_modify_file = build_config_reader(host_modify_file);
+        let host_modifier = HostModifier::new(host_modify_file).unwrap();
+        assert!(host_modifier.is_some(), "parse normal config");
+
+        let host_modifier = host_modifier.unwrap();
+
+        let res = host_modifier.route("example.com");
+        assert!(res.is_some(), "example.com should be in the rule");
+        let res = res.unwrap();
+        assert_eq!(res, "hello.com", "route example.com to local1");
+
+        let res = host_modifier.route("google.com");
         assert!(res.is_none(), "google.com should not be in the rule");
     }
 
