@@ -64,10 +64,8 @@ async fn listen_incoming_connection(
                             return Ok::<_, hyper::Error>(resp);
                         };
 
-                    let peer = PeerInfo {
-                        host,
-                        addr: peer_addr,
-                    };
+                    let peer = PeerInfo::new(host, peer_addr);
+
                     if req.method() == Method::CONNECT {
                         tokio::spawn(async move {
                             match hyper::upgrade::on(req).await {
@@ -103,11 +101,8 @@ async fn listen_incoming_connection(
 async fn handle_connection(
     config: Arc<Config>,
     inbound: IncomingConnection,
-    mut peer: PeerInfo,
+    peer: PeerInfo,
 ) -> anyhow::Result<()> {
-    // host rewrite
-    config.rewrite_host(&mut peer);
-
     // begin transfer
     match inbound {
         IncomingConnection::NonConnectMethod(tx, req) => {
@@ -137,7 +132,9 @@ async fn handle_connection(
                 // err => try again and mark this backend as fail
                 let backend_guard = backend.read().await;
                 let start = Instant::now();
-                match backend_guard.try_connect(Some(peer.host.to_owned())).await {
+                // host rewrite
+                let host = config.rewrite_host(&peer);
+                match backend_guard.try_connect(Some(host)).await {
                     Ok(outbound) => {
                         break (outbound, start.elapsed(), backend.clone());
                     }
@@ -154,7 +151,7 @@ async fn handle_connection(
             let metric = backend.metric.clone();
             // increase active connection at the same time
             let metric_incr = metric.clone();
-            let peer_addr = peer.addr;
+            let peer_addr = peer.get_addr();
             tokio::spawn(async move { metric_incr.incr_connection(peer_addr) });
 
             if let Err(err) = backend

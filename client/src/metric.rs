@@ -172,8 +172,74 @@ fn get_all_backends(config: &Arc<Config>) -> Vec<BackendMetric<'_>> {
 
 #[derive(Debug, Hash)]
 pub(crate) struct PeerInfo {
-    pub(crate) host: String,
-    pub(crate) addr: SocketAddr,
+    host: String,
+    addr: SocketAddr,
+    port_index: HostPortIndex,
+}
+
+impl PeerInfo {
+    pub(crate) fn new(host: String, addr: SocketAddr) -> Self {
+        let port_index = HostPortIndex::new(&host);
+
+        Self {
+            host,
+            addr,
+            port_index,
+        }
+    }
+
+    /// get host without its port
+    /// host: "example.com:80" => "example.com"
+    pub(crate) fn get_hostname(&self) -> &str {
+        match self.port_index {
+            HostPortIndex::NonDafault(i) => &self.host[..i],
+            HostPortIndex::Default => &self.host,
+        }
+    }
+
+    /// this would fill up port number if original host not have
+    pub(crate) fn get_valid_host(&self) -> String {
+        match self.port_index {
+            HostPortIndex::NonDafault(_) => self.host.to_owned(),
+            HostPortIndex::Default => {
+                let mut host = self.host.to_owned();
+                host.push(':');
+                host.push_str(HostPortIndex::DEFAULT_PORT);
+                host
+            }
+        }
+    }
+
+    pub(crate) fn get_port_str(&self) -> String {
+        match self.port_index {
+            HostPortIndex::NonDafault(i) => {
+                let port_str = &self.host[i + 1..];
+                port_str.to_owned()
+            }
+            HostPortIndex::Default => HostPortIndex::DEFAULT_PORT.to_owned(),
+        }
+    }
+
+    pub(crate) fn get_addr(&self) -> SocketAddr {
+        self.addr
+    }
+}
+
+#[derive(Debug, Hash)]
+enum HostPortIndex {
+    Default,
+    NonDafault(usize),
+}
+
+impl HostPortIndex {
+    const DEFAULT_PORT: &'static str = "80";
+
+    fn new(host: &str) -> Self {
+        match host.rfind(':') {
+            Some(i) => Self::NonDafault(i),
+            None => Self::Default,
+        }
+    }
 }
 
 enum MetricOp {
@@ -310,7 +376,7 @@ impl MetricWriter {
 #[derive(Clone)]
 pub(crate) struct Metric {
     // backend_name, backend_address,domain is fixed
-    backend_name: String,
+    pub(crate) backend_name: String,
     backend_address: String,
     domain: String,
 
@@ -408,6 +474,8 @@ impl Metric {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{IpAddr, Ipv4Addr};
+
     use super::*;
 
     #[test]
@@ -458,5 +526,20 @@ mod tests {
             0,
             "incorrect active peers count"
         );
+    }
+
+    #[test]
+    fn test_new_peer_info() {
+        let eg_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+
+        let p = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
+        assert_eq!(p.get_hostname(), "example.com");
+        assert_eq!(p.get_valid_host(), "example.com:8080");
+        assert_eq!(p.get_port_str(), "8080");
+
+        let p = PeerInfo::new("example.com".to_owned(), eg_addr);
+        assert_eq!(p.get_hostname(), "example.com");
+        assert_eq!(p.get_valid_host(), "example.com:80");
+        assert_eq!(p.get_port_str(), "80");
     }
 }

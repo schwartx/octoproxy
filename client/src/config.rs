@@ -8,7 +8,7 @@ use octoproxy_lib::proxy_client::ProxyConnector;
 use tracing::metadata::LevelFilter;
 
 use std::collections::BTreeMap;
-use std::io::BufRead;
+use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
@@ -31,7 +31,7 @@ struct FileConfig {
     listen_address: String,
     log_level: String,
     balance: Balance,
-    host_rewrite: Option<PathBuf>,
+    host_modify: Option<PathBuf>,
     /// listen address for metric service
     metric_address: String,
     backends: HashMap<String, FileBackendConfig>,
@@ -47,7 +47,7 @@ pub(crate) struct Config {
     pub(crate) balance: Box<dyn LoadBalancingAlgorithm<ConfigBackend> + Send + Sync + 'static>,
     pub(crate) backends: Vec<ConfigBackend>,
 
-    host_rewriter: Option<HostRewriter>,
+    host_modifier: Option<HostModifier>,
 
     pub(crate) non_connect_method_client: Client<ProxyConnector<HttpConnector>>,
 }
@@ -58,38 +58,76 @@ pub(crate) struct ConfigBackend {
     pub(crate) metric: Arc<Metric>,
 }
 
-struct HostRewriter {
-    hosts: BTreeMap<String, String>,
+// modifier
+#[derive(Debug, Deserialize)]
+struct HostModifier(BTreeMap<String, HostModifySection>);
+
+#[derive(Debug, Deserialize)]
+struct HostModifySection {
+    rewrite: Option<String>,
+    backend: Option<String>,
 }
 
-impl HostRewriter {
-    fn new(host_rewrite_file: impl std::io::Read) -> anyhow::Result<Option<Self>> {
-        let buf = std::io::BufReader::new(host_rewrite_file);
-        let mut hosts = BTreeMap::new();
+impl TomlFileConfig for HostModifier {}
 
-        for line in buf.lines() {
-            let line = line.context("Failed to get line")?;
-            if line.is_empty() {
+impl HostModifier {
+    fn new(host_file: impl std::io::Read) -> anyhow::Result<Option<Self>> {
+        let mut this =
+            Self::load_from_read(host_file).context("Failed to parse host modify toml")?;
+
+        let mut map = BTreeMap::new();
+        for (sec_name, sec) in this.0 {
+            if sec.rewrite.is_none() && sec.backend.is_none() {
                 continue;
             }
-
-            let parts: Vec<&str> = line.split(' ').collect();
-            if parts.len() != 2 {
-                // ignore this
-                continue;
-            }
-
-            hosts.insert(parts[0].to_string(), parts[1].to_string());
+            map.insert(sec_name, sec);
         }
+        this.0 = map;
 
-        if hosts.is_empty() {
+        if this.0.is_empty() {
             return Ok(None);
         }
-        Ok(Some(Self { hosts }))
+        Ok(Some(this))
     }
 
-    fn rewrite(&self, request_host: &str) -> Option<&str> {
-        self.hosts.get(request_host).map(|x| x.as_str())
+    fn rewrite(&self, req_host: &str) -> Option<&str> {
+        if let Some(&HostModifySection {
+            rewrite: Some(ref r),
+            backend: _,
+        }) = self.0.get(req_host)
+        {
+            return Some(r);
+        }
+        None
+    }
+
+    fn route(&self, req_host: &str) -> Option<&str> {
+        if let Some(&HostModifySection {
+            rewrite: _,
+            backend: Some(ref r),
+        }) = self.0.get(req_host)
+        {
+            return Some(r);
+        }
+        None
+    }
+
+    fn choose_backend(
+        &self,
+        peer: &PeerInfo,
+        backends: std::slice::Iter<'_, ConfigBackend>,
+    ) -> ControlFlow<Option<Arc<RwLock<Backend>>>, ()> {
+        if let Some(spec_backend_name) = self.route(peer.get_hostname()) {
+            for b in backends {
+                if b.metric.backend_name == spec_backend_name {
+                    return ControlFlow::Break(Some(b.backend.clone()));
+                }
+            }
+            // not found
+            return ControlFlow::Break(None);
+        }
+        // ignore
+        ControlFlow::Continue(())
     }
 }
 
@@ -122,11 +160,11 @@ impl Config {
         let non_connect_method_client =
             hyper::client::Client::builder().build::<_, hyper::Body>(proxy);
 
-        let host_rewriter = if let Some(host_rewriter) = file_config.host_rewrite {
-            let host_rewriter =
-                std::fs::File::open(host_rewriter).context("Failed to open host rewrite file")?;
+        let host_modifier = if let Some(host_modifier) = file_config.host_modify {
+            let host_modifier =
+                std::fs::File::open(host_modifier).context("Failed to open host rewrite file")?;
 
-            HostRewriter::new(host_rewriter).context("Failed to parse host rewrite config")?
+            HostModifier::new(host_modifier).context("Failed to parse host rewrite config")?
         } else {
             None
         };
@@ -137,7 +175,7 @@ impl Config {
             balance: Box::new(Frist),
             metric_address,
             log_level,
-            host_rewriter,
+            host_modifier,
             non_connect_method_client,
         };
 
@@ -193,15 +231,39 @@ impl Config {
             .await
     }
 
+    /// - if `config` has `host_modifier`, use it to find the corresponding backend:
+    ///   - If not found, return None
+    ///   - If found, return the backend if backend's status is normal
+    /// - If `config` does not have `host_modifier`, use load balancing algorithm.
     pub(crate) async fn next_available_backend(
         &self,
         peer: &PeerInfo,
     ) -> Option<Arc<RwLock<Backend>>> {
+        if let Some(ref host_modifier) = self.host_modifier {
+            match host_modifier.choose_backend(peer, self.backends.iter()) {
+                ControlFlow::Continue(_) => {}
+                ControlFlow::Break(None) => {
+                    return None;
+                }
+                ControlFlow::Break(Some(b)) => {
+                    if b.read().await.get_status() == BackendStatus::Normal {
+                        return Some(b.clone());
+                    } else {
+                        return None;
+                    }
+                }
+            };
+        };
+
         let backends = self.available_backends().await;
         if backends.is_empty() {
-            None
-        } else if backends.len() == 1 {
-            backends.get(0).map(|b| b.backend.clone())
+            return None;
+        }
+
+        if backends.len() == 1 {
+            backends
+                .get(0)
+                .map(|config_backend| config_backend.backend.clone())
         } else {
             self.balance
                 .next_available_backend(&backends, peer)
@@ -209,37 +271,19 @@ impl Config {
         }
     }
 
-    pub fn rewrite_host(&self, peer_info: &mut PeerInfo) {
-        if let Some(ref h) = self.host_rewriter {
-            let (host, port_str, is_default_port) = host_checker(&peer_info.host);
-
-            if let Some(host) = h.rewrite(host) {
+    pub(crate) fn rewrite_host(&self, peer_info: &PeerInfo) -> String {
+        if let Some(ref h) = self.host_modifier {
+            if let Some(host) = h.rewrite(peer_info.get_hostname()) {
                 info!("host is rewritten: {}", host);
 
-                let port_str = port_str.to_string();
-                peer_info.host.clear();
-                // "example.com" + ":" + "8080"
-                peer_info.host.push_str(host);
-                peer_info.host.push(':');
-                peer_info.host.push_str(&port_str);
-            } else if is_default_port {
-                let port_str = port_str.to_string();
-                let host = host.to_owned();
-                peer_info.host.clear();
-                peer_info.host.push_str(&host);
-                peer_info.host.push(':');
-                peer_info.host.push_str(&port_str);
+                let mut host = host.to_owned();
+                host.push(':');
+                host.push_str(&peer_info.get_port_str());
+                return host;
             }
         }
-    }
-}
 
-/// This checks if a port number is present. If it is not, it will add the port number 80.
-/// It will also extract the host for checking and matching host rewriting rules.
-fn host_checker(host: &str) -> (&str, &str, bool) {
-    match host.rsplit_once(':') {
-        Some((host, port_str)) => (host, port_str, false),
-        None => (host, "80", true),
+        peer_info.get_valid_host()
     }
 }
 
@@ -279,10 +323,7 @@ mod tests {
     }
 
     fn empty_host_peer_info() -> PeerInfo {
-        PeerInfo {
-            host: "".to_owned(),
-            addr: "127.0.0.1:8080".parse().unwrap(),
-        }
+        PeerInfo::new("".to_owned(), "127.0.0.1:8080".parse().unwrap())
     }
 
     #[tokio::test]
@@ -402,80 +443,115 @@ mod tests {
         })
         .unwrap();
 
-        let mut peer = PeerInfo {
-            host: "hello.com".to_string(),
-            addr: "127.0.0.1:14000".parse().unwrap(),
-        };
-        config.rewrite_host(&mut peer);
-        assert_eq!(peer.host, "127.0.0.1:80")
+        let peer = PeerInfo::new(
+            "hello.com:8080".to_string(),
+            "127.0.0.1:14000".parse().unwrap(),
+        );
+
+        let new_host = config.rewrite_host(&peer);
+        assert_eq!(new_host, "127.0.0.1:8080")
     }
 
-    fn build_host_rewrite_config_reader(s: &str) -> std::io::BufReader<Cursor<&str>> {
+    fn build_config_reader(s: &str) -> std::io::BufReader<Cursor<&str>> {
         std::io::BufReader::new(Cursor::new(s))
     }
 
     #[test]
-    fn test_new_host_rewriter() {
-        let host_rewrite_file = r#"
-example.com hello.com
+    fn test_new_host_modifier() {
+        let host_modifier_file = r#"
+["example.com"]
+rewrite = "hello.com"
+backend = "local1"
 
-hello 127.0.0.1
+[hello]
+rewrite = "127.0.0.1"
+
+[world]
+
         "#;
-        let host_rewrite_file = build_host_rewrite_config_reader(host_rewrite_file);
-        let host_rewriter = HostRewriter::new(host_rewrite_file).unwrap();
-        assert!(host_rewriter.is_some(), "parse normal config");
+        let host_modify_file = build_config_reader(host_modifier_file);
+        let host_modifier = HostModifier::new(host_modify_file).unwrap();
+        assert!(host_modifier.is_some(), "parse normal config");
 
-        let host_rewrite_file = r#"
+        let host_modify_file = r#"
 
         "#;
-        let host_rewrite_file = build_host_rewrite_config_reader(host_rewrite_file);
-        let host_rewriter = HostRewriter::new(host_rewrite_file).unwrap();
-        assert!(host_rewriter.is_none(), "parse empty config");
+        let host_modify_file = build_config_reader(host_modify_file);
+        let host_modifier = HostModifier::new(host_modify_file).unwrap();
+        assert!(host_modifier.is_none(), "parse empty config");
 
-        let host_rewrite_file = r#"
+        let host_modify_file = r#"
+[hello]
+
+[world]
+        "#;
+        let host_modify_file = build_config_reader(host_modify_file);
+        let host_modifier = HostModifier::new(host_modify_file).unwrap();
+        assert!(host_modifier.is_none(), "parse empty sections config");
+
+        let host_modify_file = r#"
 aaaaaaaaaaaaaaaaa
         "#;
-        let host_rewrite_file = build_host_rewrite_config_reader(host_rewrite_file);
-        let host_rewriter = HostRewriter::new(host_rewrite_file).unwrap();
-        assert!(host_rewriter.is_none(), "parse invalid config")
+        let host_modify_file = build_config_reader(host_modify_file);
+        let host_modifier = HostModifier::new(host_modify_file);
+        assert!(host_modifier.is_err(), "parse invalid config");
+
+        let host_modify_file = r#"
+[hello]
+[hello]
+        "#;
+        let host_modify_file = build_config_reader(host_modify_file);
+        let host_modifier = HostModifier::new(host_modify_file);
+        assert!(host_modifier.is_err(), "parse dup sections config")
     }
 
     #[test]
-    fn test_host_rewriter_rewrite() {
-        let host_rewrite_file = r#"
-example.com hello.com
+    fn test_host_modifier_rewrite() {
+        let host_modify_file = r#"
+["example.com"]
+rewrite = "hello.com"
+backend = "local1"
 
-hello 127.0.0.1
+[hello]
+rewrite = "127.0.0.1"
         "#;
-        let host_rewrite_file = build_host_rewrite_config_reader(host_rewrite_file);
-        let host_rewriter = HostRewriter::new(host_rewrite_file).unwrap();
-        assert!(host_rewriter.is_some(), "parse normal config");
+        let host_modify_file = build_config_reader(host_modify_file);
+        let host_modifier = HostModifier::new(host_modify_file).unwrap();
+        assert!(host_modifier.is_some(), "parse normal config");
 
-        let host_rewriter = host_rewriter.unwrap();
-        let res = host_rewriter.rewrite("example.com");
+        let host_modifier = host_modifier.unwrap();
+
+        let res = host_modifier.rewrite("example.com");
         assert!(res.is_some(), "example.com should be in the rule");
         let res = res.unwrap();
         assert_eq!(res, "hello.com", "rewrite example.com into hello.com");
 
-        let res = host_rewriter.rewrite("google.com");
+        let res = host_modifier.rewrite("google.com");
         assert!(res.is_none(), "google.com should not be in the rule");
     }
 
     #[test]
-    fn test_host_checker() {
-        let (host, port_str, is_default_port) = host_checker("example.com:80");
-        assert_eq!(host, "example.com");
-        assert_eq!(port_str, "80");
-        assert_eq!(is_default_port, false);
+    fn test_host_modifier_route() {
+        let host_modify_file = r#"
+["example.com"]
+rewrite = "hello.com"
+backend = "local1"
 
-        let (host, port_str, is_default_port) = host_checker("example.com");
-        assert_eq!(host, "example.com");
-        assert_eq!(port_str, "80");
-        assert_eq!(is_default_port, true);
+[hello]
+rewrite = "127.0.0.1"
+        "#;
+        let host_modify_file = build_config_reader(host_modify_file);
+        let host_modifier = HostModifier::new(host_modify_file).unwrap();
+        assert!(host_modifier.is_some(), "parse normal config");
 
-        let (host, port_str, is_default_port) = host_checker(":80");
-        assert_eq!(host, "");
-        assert_eq!(port_str, "80");
-        assert_eq!(is_default_port, false);
+        let host_modifier = host_modifier.unwrap();
+
+        let res = host_modifier.route("example.com");
+        assert!(res.is_some(), "example.com should be in the rule");
+        let res = res.unwrap();
+        assert_eq!(res, "local1", "route example.com to local1");
+
+        let res = host_modifier.route("google.com");
+        assert!(res.is_none(), "google.com should not be in the rule");
     }
 }
