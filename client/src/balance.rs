@@ -132,17 +132,11 @@ mod tests {
     }
 
     fn new_host_peer_info(host: &str) -> PeerInfo {
-        PeerInfo {
-            host: host.to_owned(),
-            addr: "127.0.0.1:8080".parse().unwrap(),
-        }
+        PeerInfo::new(host.to_owned(), "127.0.0.1:8080".parse().unwrap())
     }
 
     fn empty_host_peer_info() -> PeerInfo {
-        PeerInfo {
-            host: "".to_owned(),
-            addr: "127.0.0.1:8080".parse().unwrap(),
-        }
+        PeerInfo::new("".to_owned(), "127.0.0.1:8080".parse().unwrap())
     }
 
     #[test]

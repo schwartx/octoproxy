@@ -64,10 +64,8 @@ async fn listen_incoming_connection(
                             return Ok::<_, hyper::Error>(resp);
                         };
 
-                    let peer = PeerInfo {
-                        host,
-                        addr: peer_addr,
-                    };
+                    let peer = PeerInfo::new(host, peer_addr);
+
                     if req.method() == Method::CONNECT {
                         tokio::spawn(async move {
                             match hyper::upgrade::on(req).await {
@@ -153,7 +151,7 @@ async fn handle_connection(
             let metric = backend.metric.clone();
             // increase active connection at the same time
             let metric_incr = metric.clone();
-            let peer_addr = peer.addr;
+            let peer_addr = peer.get_addr();
             tokio::spawn(async move { metric_incr.incr_connection(peer_addr) });
 
             if let Err(err) = backend

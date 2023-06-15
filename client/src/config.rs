@@ -223,19 +223,25 @@ impl Config {
         if backends.len() == 1 {
             backends
                 .get(0)
-                .filter(|config_backend| self.choose_backend(&peer.host, config_backend).is_some())
+                .filter(|config_backend| {
+                    self.choose_backend(peer.get_host(), config_backend)
+                        .is_some()
+                })
                 .map(|config_backend| config_backend.backend.clone())
         } else {
             self.balance
                 .next_available_backend(&backends, peer)
-                .filter(|config_backend| self.choose_backend(&peer.host, config_backend).is_some())
+                .filter(|config_backend| {
+                    self.choose_backend(peer.get_host(), config_backend)
+                        .is_some()
+                })
                 .map(|b| b.backend)
         }
     }
 
     pub(crate) fn rewrite_host(&self, peer_info: &PeerInfo) -> String {
         if let Some(ref h) = self.host_modifier {
-            let (host, port_str) = host_checker(&peer_info.host);
+            let (host, port_str) = host_checker(peer_info.get_host());
 
             if let Some(host) = h.rewrite(host) {
                 info!("host is rewritten: {}", host);
@@ -253,7 +259,7 @@ impl Config {
             }
         }
 
-        peer_info.host.to_owned()
+        peer_info.get_host().to_owned()
     }
 
     fn choose_backend<'a>(
@@ -278,7 +284,7 @@ impl Config {
     }
 }
 
-enum PortStr<'a> {
+pub(crate) enum PortStr<'a> {
     Default,
     NonDefault(&'a str),
 }
@@ -298,7 +304,7 @@ impl ToString for PortStr<'_> {
 
 /// This checks if a port number is present. If it is not, it will add the port number 80.
 /// It will also extract the host for checking and matching host rewriting rules.
-fn host_checker(host: &str) -> (&str, PortStr) {
+pub(crate) fn host_checker(host: &str) -> (&str, PortStr) {
     match host.rsplit_once(':') {
         Some((host, port_str)) => (host, PortStr::NonDefault(port_str)),
         None => (host, PortStr::Default),
@@ -341,10 +347,7 @@ mod tests {
     }
 
     fn empty_host_peer_info() -> PeerInfo {
-        PeerInfo {
-            host: "".to_owned(),
-            addr: "127.0.0.1:8080".parse().unwrap(),
-        }
+        PeerInfo::new("".to_owned(), "127.0.0.1:8080".parse().unwrap())
     }
 
     #[tokio::test]
@@ -464,10 +467,11 @@ mod tests {
         })
         .unwrap();
 
-        let peer = PeerInfo {
-            host: "hello.com:8080".to_string(),
-            addr: "127.0.0.1:14000".parse().unwrap(),
-        };
+        let peer = PeerInfo::new(
+            "hello.com:8080".to_string(),
+            "127.0.0.1:14000".parse().unwrap(),
+        );
+
         let new_host = config.rewrite_host(&peer);
         assert_eq!(new_host, "127.0.0.1:8080")
     }
