@@ -8,7 +8,6 @@ use octoproxy_lib::proxy_client::ProxyConnector;
 use tracing::metadata::LevelFilter;
 
 use std::collections::BTreeMap;
-use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
@@ -116,19 +115,25 @@ impl HostModifier {
         &self,
         peer: &PeerInfo,
         backends: std::slice::Iter<'_, ConfigBackend>,
-    ) -> ControlFlow<Option<Arc<RwLock<Backend>>>, ()> {
+    ) -> AvailableBackend {
         if let Some(spec_backend_name) = self.route(peer.get_hostname()) {
             for b in backends {
                 if b.metric.backend_name == spec_backend_name {
-                    return ControlFlow::Break(Some(b.backend.clone()));
+                    return AvailableBackend::GotBackend(b.backend.clone());
                 }
             }
             // not found
-            return ControlFlow::Break(None);
+            return AvailableBackend::Block;
         }
         // ignore
-        ControlFlow::Continue(())
+        AvailableBackend::NoBackend
     }
+}
+
+pub(crate) enum AvailableBackend {
+    Block,
+    NoBackend,
+    GotBackend(Arc<RwLock<Backend>>),
 }
 
 impl Config {
@@ -235,39 +240,35 @@ impl Config {
     ///   - If not found, return None
     ///   - If found, return the backend if backend's status is normal
     /// - If `config` does not have `host_modifier`, use load balancing algorithm.
-    pub(crate) async fn next_available_backend(
-        &self,
-        peer: &PeerInfo,
-    ) -> Option<Arc<RwLock<Backend>>> {
+    pub(crate) async fn next_available_backend(&self, peer: &PeerInfo) -> AvailableBackend {
         if let Some(ref host_modifier) = self.host_modifier {
             match host_modifier.choose_backend(peer, self.backends.iter()) {
-                ControlFlow::Continue(_) => {}
-                ControlFlow::Break(None) => {
-                    return None;
-                }
-                ControlFlow::Break(Some(b)) => {
+                AvailableBackend::NoBackend => {}
+                AvailableBackend::GotBackend(b) => {
                     if b.read().await.get_status() == BackendStatus::Normal {
-                        return Some(b.clone());
+                        return AvailableBackend::GotBackend(b.clone());
                     } else {
-                        return None;
+                        return AvailableBackend::Block;
                     }
+                }
+                AvailableBackend::Block => {
+                    return AvailableBackend::Block;
                 }
             };
         };
 
         let backends = self.available_backends().await;
         if backends.is_empty() {
-            return None;
+            return AvailableBackend::NoBackend;
         }
 
         if backends.len() == 1 {
-            backends
-                .get(0)
-                .map(|config_backend| config_backend.backend.clone())
+            AvailableBackend::GotBackend(backends.get(0).unwrap().backend.clone())
         } else {
-            self.balance
-                .next_available_backend(&backends, peer)
-                .map(|b| b.backend)
+            match self.balance.next_available_backend(&backends, peer) {
+                Some(config_backend) => AvailableBackend::GotBackend(config_backend.backend),
+                None => AvailableBackend::NoBackend,
+            }
         }
     }
 
@@ -366,8 +367,12 @@ mod tests {
         let res = config.available_backends().await;
         assert_eq!(res.len(), 1, "incorrect config available backends len");
         let next_backend = config.next_available_backend(&empty_host_peer_info()).await;
+        let next_backend = match next_backend {
+            AvailableBackend::GotBackend(b) => b,
+            _ => unreachable!("Should not be other value"),
+        };
         assert_eq!(
-            next_backend.unwrap().read().await.backend_name,
+            next_backend.read().await.backend_name,
             "first_backend".to_owned(),
             "should be a backend here"
         );
@@ -378,7 +383,11 @@ mod tests {
         let res = config.available_backends().await;
         assert_eq!(res.len(), 0, "should be no backend");
         let next_backend = config.next_available_backend(&empty_host_peer_info()).await;
-        assert!(next_backend.is_none(), "should be no backend");
+
+        assert!(
+            matches!(next_backend, AvailableBackend::NoBackend),
+            "should be no backend"
+        );
     }
 
     #[tokio::test]

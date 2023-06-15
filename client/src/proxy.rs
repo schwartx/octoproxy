@@ -119,8 +119,11 @@ async fn handle_connection(
             let (outbound, connection_time, backend) = loop {
                 let backend = {
                     match config.next_available_backend(&peer).await {
-                        Some(backend) => backend,
-                        None => {
+                        crate::config::AvailableBackend::GotBackend(backend) => backend,
+                        crate::config::AvailableBackend::Block => {
+                            return Ok(());
+                        }
+                        crate::config::AvailableBackend::NoBackend => {
                             debug!("no backend!");
                             return Ok(());
                         }
