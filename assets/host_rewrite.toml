@@ -1,0 +1,5 @@
+["example.com"]
+rewrite = "127.0.0.1"
+
+["hello.com"]
+backend = "local1"

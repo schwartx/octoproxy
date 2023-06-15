@@ -310,7 +310,7 @@ impl MetricWriter {
 #[derive(Clone)]
 pub(crate) struct Metric {
     // backend_name, backend_address,domain is fixed
-    backend_name: String,
+    pub(crate) backend_name: String,
     backend_address: String,
     domain: String,
 

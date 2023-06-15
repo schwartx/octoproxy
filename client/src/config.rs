@@ -30,7 +30,7 @@ struct FileConfig {
     listen_address: String,
     log_level: String,
     balance: Balance,
-    host_rewrite: Option<PathBuf>,
+    host_modify: Option<PathBuf>,
     /// listen address for metric service
     metric_address: String,
     backends: HashMap<String, FileBackendConfig>,
@@ -95,19 +95,18 @@ impl HostModifier {
             backend: _,
         }) = self.0.get(req_host)
         {
-            return Some(&r);
+            return Some(r);
         }
         None
     }
 
-    #[allow(unused)]
     fn route(&self, req_host: &str) -> Option<&str> {
         if let Some(&HostModifySection {
             rewrite: _,
             backend: Some(ref r),
         }) = self.0.get(req_host)
         {
-            return Some(&r);
+            return Some(r);
         }
         None
     }
@@ -142,7 +141,7 @@ impl Config {
         let non_connect_method_client =
             hyper::client::Client::builder().build::<_, hyper::Body>(proxy);
 
-        let host_modifier = if let Some(host_modifier) = file_config.host_rewrite {
+        let host_modifier = if let Some(host_modifier) = file_config.host_modify {
             let host_modifier =
                 std::fs::File::open(host_modifier).context("Failed to open host rewrite file")?;
 
@@ -219,12 +218,17 @@ impl Config {
     ) -> Option<Arc<RwLock<Backend>>> {
         let backends = self.available_backends().await;
         if backends.is_empty() {
-            None
-        } else if backends.len() == 1 {
-            backends.get(0).map(|b| b.backend.clone())
+            return None;
+        }
+        if backends.len() == 1 {
+            backends
+                .get(0)
+                .filter(|config_backend| self.choose_backend(&peer.host, config_backend).is_some())
+                .map(|config_backend| config_backend.backend.clone())
         } else {
             self.balance
                 .next_available_backend(&backends, peer)
+                .filter(|config_backend| self.choose_backend(&peer.host, config_backend).is_some())
                 .map(|b| b.backend)
         }
     }
@@ -251,6 +255,26 @@ impl Config {
                 peer_info.host.push_str(&port_str);
             }
         }
+    }
+
+    fn choose_backend<'a>(
+        &self,
+        req_host: &str,
+        config_backend: &'a ConfigBackend,
+    ) -> Option<&'a ConfigBackend> {
+        if let Some(ref host_modifier) = self.host_modifier {
+            if let Some(spec_backen_name) = host_modifier.route(req_host) {
+                if spec_backen_name == config_backend.metric.backend_name {
+                    // give back the backend
+                    return Some(config_backend);
+                } else {
+                    return None;
+                }
+            }
+            // backend name not found, give back the backend
+        }
+        // no modifier, give back a backend
+        Some(config_backend)
     }
 }
 
