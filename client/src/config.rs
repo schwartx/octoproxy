@@ -126,7 +126,7 @@ impl HostModifier {
             return AvailableBackend::Block;
         }
         // ignore
-        return AvailableBackend::NoBackend;
+        AvailableBackend::NoBackend
     }
 }
 
@@ -266,9 +266,7 @@ impl Config {
             AvailableBackend::GotBackend(backends.get(0).unwrap().backend.clone())
         } else {
             match self.balance.next_available_backend(&backends, peer) {
-                Some(config_backend) => {
-                    AvailableBackend::GotBackend(config_backend.backend.clone())
-                }
+                Some(config_backend) => AvailableBackend::GotBackend(config_backend.backend),
                 None => AvailableBackend::NoBackend,
             }
         }
