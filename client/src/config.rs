@@ -1,8 +1,10 @@
+#![allow(unused)]
 use anyhow::Context;
 use futures::stream::{self, StreamExt};
 use hashring::HashRing;
 use hyper::client::HttpConnector;
 use hyper::Client;
+use left_right::new;
 use octoproxy_lib::metric::BackendStatus;
 use octoproxy_lib::proxy_client::ProxyConnector;
 use tracing::metadata::LevelFilter;
@@ -90,6 +92,63 @@ impl HostRewriter {
 
     fn rewrite(&self, request_host: &str) -> Option<&str> {
         self.hosts.get(request_host).map(|x| x.as_str())
+    }
+}
+
+// modifier
+#[derive(Debug, Deserialize)]
+struct HostModifier {
+    hosts: BTreeMap<String, HostModifySection>,
+}
+
+#[derive(Debug, Deserialize)]
+struct HostModifySection {
+    rewrite: Option<String>,
+    backend: Option<String>,
+}
+
+impl TomlFileConfig for HostModifier {}
+
+impl HostModifier {
+    fn new(host_file: impl std::io::Read) -> anyhow::Result<Option<Self>> {
+        let mut this =
+            Self::load_from_read(host_file).context("Failed to parse host modify toml")?;
+
+        let mut map = BTreeMap::new();
+        for (sec_name, sec) in this.hosts {
+            if sec.rewrite.is_none() && sec.rewrite.is_none() {
+                continue;
+            }
+            map.insert(sec_name, sec);
+        }
+        this.hosts = map;
+
+        if this.hosts.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(this))
+    }
+
+    fn rewrite(&self, req_host: &str) -> Option<&str> {
+        if let Some(&HostModifySection {
+            rewrite: Some(ref r),
+            backend: _,
+        }) = self.hosts.get(req_host)
+        {
+            return Some(&r);
+        }
+        None
+    }
+
+    fn choose_backend(&self, req_host: &str) -> Option<&str> {
+        if let Some(&HostModifySection {
+            rewrite: _,
+            backend: Some(ref r),
+        }) = self.hosts.get(req_host)
+        {
+            return Some(&r);
+        }
+        None
     }
 }
 

@@ -1,5 +1,6 @@
 use anyhow::{bail, Context};
 use std::env;
+use std::io::Read;
 use std::{fs::read_to_string, net::SocketAddr, path::PathBuf};
 use toml::macros::Deserialize;
 use tracing::metadata::LevelFilter;
@@ -25,6 +26,23 @@ pub trait TomlFileConfig
 where
     Self: Sized,
 {
+    fn load_from_read(r: impl std::io::Read) -> anyhow::Result<Self>
+    where
+        for<'de> Self: Deserialize<'de>,
+    {
+        let mut buf = std::io::BufReader::new(r);
+        let mut s = String::new();
+        buf.read_to_string(&mut s)?;
+
+        let config: Self = match toml::from_str(&s) {
+            Ok(config) => config,
+            Err(e) => {
+                bail!(e);
+            }
+        };
+        Ok(config)
+    }
+
     fn load_from_file(path: PathBuf) -> anyhow::Result<Self>
     where
         for<'de> Self: Deserialize<'de>,
