@@ -235,18 +235,17 @@ impl Config {
 
     pub(crate) fn rewrite_host(&self, peer_info: &mut PeerInfo) {
         if let Some(ref h) = self.host_modifier {
-            let (host, port_str, is_default_port) = host_checker(&peer_info.host);
+            let (host, port_str) = host_checker(&peer_info.host);
 
             if let Some(host) = h.rewrite(host) {
                 info!("host is rewritten: {}", host);
-
                 let port_str = port_str.to_string();
                 peer_info.host.clear();
                 // "example.com" + ":" + "8080"
                 peer_info.host.push_str(host);
                 peer_info.host.push(':');
                 peer_info.host.push_str(&port_str);
-            } else if is_default_port {
+            } else if let PortStr::Default = port_str {
                 let port_str = port_str.to_string();
                 let host = host.to_owned();
                 peer_info.host.clear();
@@ -279,12 +278,30 @@ impl Config {
     }
 }
 
+enum PortStr<'a> {
+    Default,
+    NonDefault(&'a str),
+}
+
+impl PortStr<'_> {
+    const DEFUALT_PORT_STR: &'static str = "80";
+}
+
+impl ToString for PortStr<'_> {
+    fn to_string(&self) -> String {
+        match self {
+            PortStr::Default => PortStr::DEFUALT_PORT_STR.to_owned(),
+            PortStr::NonDefault(port_str) => port_str.to_string(),
+        }
+    }
+}
+
 /// This checks if a port number is present. If it is not, it will add the port number 80.
 /// It will also extract the host for checking and matching host rewriting rules.
-fn host_checker(host: &str) -> (&str, &str, bool) {
+fn host_checker(host: &str) -> (&str, PortStr) {
     match host.rsplit_once(':') {
-        Some((host, port_str)) => (host, port_str, false),
-        None => (host, "80", true),
+        Some((host, port_str)) => (host, PortStr::NonDefault(port_str)),
+        None => (host, PortStr::Default),
     }
 }
 
@@ -448,11 +465,11 @@ mod tests {
         .unwrap();
 
         let mut peer = PeerInfo {
-            host: "hello.com".to_string(),
+            host: "hello.com:8080".to_string(),
             addr: "127.0.0.1:14000".parse().unwrap(),
         };
         config.rewrite_host(&mut peer);
-        assert_eq!(peer.host, "127.0.0.1:80")
+        assert_eq!(peer.host, "127.0.0.1:8080")
     }
 
     fn build_config_reader(s: &str) -> std::io::BufReader<Cursor<&str>> {
@@ -560,19 +577,20 @@ rewrite = "127.0.0.1"
 
     #[test]
     fn test_host_checker() {
-        let (host, port_str, is_default_port) = host_checker("example.com:80");
+        let (host, port_str) = host_checker("example.com:80");
         assert_eq!(host, "example.com");
-        assert_eq!(port_str, "80");
-        assert_eq!(is_default_port, false);
+        assert!(matches!(port_str, PortStr::NonDefault("80")));
 
-        let (host, port_str, is_default_port) = host_checker("example.com");
+        let (host, port_str) = host_checker("example.com");
         assert_eq!(host, "example.com");
-        assert_eq!(port_str, "80");
-        assert_eq!(is_default_port, true);
+        assert!(matches!(port_str, PortStr::Default));
 
-        let (host, port_str, is_default_port) = host_checker(":80");
+        let (host, port_str) = host_checker(":80");
         assert_eq!(host, "");
-        assert_eq!(port_str, "80");
-        assert_eq!(is_default_port, false);
+        assert!(matches!(port_str, PortStr::NonDefault("80")));
+
+        let (host, port_str) = host_checker("example.com:8080");
+        assert_eq!(host, "example.com");
+        assert!(matches!(port_str, PortStr::NonDefault("8080")));
     }
 }
