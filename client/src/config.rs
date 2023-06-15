@@ -1,16 +1,13 @@
-#![allow(unused)]
 use anyhow::Context;
 use futures::stream::{self, StreamExt};
 use hashring::HashRing;
 use hyper::client::HttpConnector;
 use hyper::Client;
-use left_right::new;
 use octoproxy_lib::metric::BackendStatus;
 use octoproxy_lib::proxy_client::ProxyConnector;
 use tracing::metadata::LevelFilter;
 
 use std::collections::BTreeMap;
-use std::io::BufRead;
 use std::path::PathBuf;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
@@ -49,7 +46,7 @@ pub(crate) struct Config {
     pub(crate) balance: Box<dyn LoadBalancingAlgorithm<ConfigBackend> + Send + Sync + 'static>,
     pub(crate) backends: Vec<ConfigBackend>,
 
-    host_rewriter: Option<HostRewriter>,
+    host_modifier: Option<HostModifier>,
 
     pub(crate) non_connect_method_client: Client<ProxyConnector<HttpConnector>>,
 }
@@ -58,41 +55,6 @@ pub(crate) struct Config {
 pub(crate) struct ConfigBackend {
     pub(crate) backend: Arc<RwLock<Backend>>,
     pub(crate) metric: Arc<Metric>,
-}
-
-struct HostRewriter {
-    hosts: BTreeMap<String, String>,
-}
-
-impl HostRewriter {
-    fn new(host_rewrite_file: impl std::io::Read) -> anyhow::Result<Option<Self>> {
-        let buf = std::io::BufReader::new(host_rewrite_file);
-        let mut hosts = BTreeMap::new();
-
-        for line in buf.lines() {
-            let line = line.context("Failed to get line")?;
-            if line.is_empty() {
-                continue;
-            }
-
-            let parts: Vec<&str> = line.split(' ').collect();
-            if parts.len() != 2 {
-                // ignore this
-                continue;
-            }
-
-            hosts.insert(parts[0].to_string(), parts[1].to_string());
-        }
-
-        if hosts.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(Self { hosts }))
-    }
-
-    fn rewrite(&self, request_host: &str) -> Option<&str> {
-        self.hosts.get(request_host).map(|x| x.as_str())
-    }
 }
 
 // modifier
@@ -138,6 +100,7 @@ impl HostModifier {
         None
     }
 
+    #[allow(unused)]
     fn route(&self, req_host: &str) -> Option<&str> {
         if let Some(&HostModifySection {
             rewrite: _,
@@ -179,11 +142,11 @@ impl Config {
         let non_connect_method_client =
             hyper::client::Client::builder().build::<_, hyper::Body>(proxy);
 
-        let host_rewriter = if let Some(host_rewriter) = file_config.host_rewrite {
-            let host_rewriter =
-                std::fs::File::open(host_rewriter).context("Failed to open host rewrite file")?;
+        let host_modifier = if let Some(host_modifier) = file_config.host_rewrite {
+            let host_modifier =
+                std::fs::File::open(host_modifier).context("Failed to open host rewrite file")?;
 
-            HostRewriter::new(host_rewriter).context("Failed to parse host rewrite config")?
+            HostModifier::new(host_modifier).context("Failed to parse host rewrite config")?
         } else {
             None
         };
@@ -194,7 +157,7 @@ impl Config {
             balance: Box::new(Frist),
             metric_address,
             log_level,
-            host_rewriter,
+            host_modifier,
             non_connect_method_client,
         };
 
@@ -267,7 +230,7 @@ impl Config {
     }
 
     pub fn rewrite_host(&self, peer_info: &mut PeerInfo) {
-        if let Some(ref h) = self.host_rewriter {
+        if let Some(ref h) = self.host_modifier {
             let (host, port_str, is_default_port) = host_checker(&peer_info.host);
 
             if let Some(host) = h.rewrite(host) {
@@ -564,7 +527,7 @@ rewrite = "127.0.0.1"
         let res = host_modifier.route("example.com");
         assert!(res.is_some(), "example.com should be in the rule");
         let res = res.unwrap();
-        assert_eq!(res, "hello.com", "route example.com to local1");
+        assert_eq!(res, "local1", "route example.com to local1");
 
         let res = host_modifier.route("google.com");
         assert!(res.is_none(), "google.com should not be in the rule");
