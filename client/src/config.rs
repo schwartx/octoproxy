@@ -8,7 +8,6 @@ use octoproxy_lib::proxy_client::ProxyConnector;
 use tracing::metadata::LevelFilter;
 
 use std::collections::BTreeMap;
-use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
@@ -116,18 +115,18 @@ impl HostModifier {
         &self,
         peer: &PeerInfo,
         backends: std::slice::Iter<'_, ConfigBackend>,
-    ) -> ControlFlow<Option<Arc<RwLock<Backend>>>, ()> {
+    ) -> AvailableBackend {
         if let Some(spec_backend_name) = self.route(peer.get_hostname()) {
             for b in backends {
                 if b.metric.backend_name == spec_backend_name {
-                    return ControlFlow::Break(Some(b.backend.clone()));
+                    return AvailableBackend::GotBackend(b.backend.clone());
                 }
             }
             // not found
-            return ControlFlow::Break(None);
+            return AvailableBackend::Block;
         }
         // ignore
-        ControlFlow::Continue(())
+        return AvailableBackend::NoBackend;
     }
 }
 
@@ -244,16 +243,16 @@ impl Config {
     pub(crate) async fn next_available_backend(&self, peer: &PeerInfo) -> AvailableBackend {
         if let Some(ref host_modifier) = self.host_modifier {
             match host_modifier.choose_backend(peer, self.backends.iter()) {
-                ControlFlow::Continue(_) => {}
-                ControlFlow::Break(None) => {
-                    return AvailableBackend::Block;
-                }
-                ControlFlow::Break(Some(b)) => {
+                AvailableBackend::NoBackend => {}
+                AvailableBackend::GotBackend(b) => {
                     if b.read().await.get_status() == BackendStatus::Normal {
                         return AvailableBackend::GotBackend(b.clone());
                     } else {
                         return AvailableBackend::Block;
                     }
+                }
+                AvailableBackend::Block => {
+                    return AvailableBackend::Block;
                 }
             };
         };
