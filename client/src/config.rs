@@ -241,25 +241,17 @@ impl Config {
 
     pub(crate) fn rewrite_host(&self, peer_info: &PeerInfo) -> String {
         if let Some(ref h) = self.host_modifier {
-            let (host, port_str) = host_checker(peer_info.get_host());
-
-            if let Some(host) = h.rewrite(host) {
+            if let Some(host) = h.rewrite(peer_info.get_hostname()) {
                 info!("host is rewritten: {}", host);
 
                 let mut host = host.to_owned();
                 host.push(':');
-                host.push_str(&port_str.to_string());
-                return host;
-            } else if let PortStr::Default = port_str {
-                // add the default port if the port is missing
-                let mut host = host.to_owned();
-                host.push(':');
-                host.push_str(&port_str.to_string());
+                host.push_str(&peer_info.get_port_str());
                 return host;
             }
         }
 
-        peer_info.get_host().to_owned()
+        peer_info.get_valid_host()
     }
 
     fn choose_backend<'a>(

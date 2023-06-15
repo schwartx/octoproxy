@@ -220,6 +220,16 @@ impl PeerInfo {
         }
     }
 
+    pub(crate) fn get_port_str(&self) -> String {
+        match self.port_index {
+            HostPortIndex::NonDafault(i) => {
+                let port_str = &self.host[i + 1..];
+                port_str.to_owned()
+            }
+            HostPortIndex::Default => HostPortIndex::DEFAULT_PORT.to_owned(),
+        }
+    }
+
     pub(crate) fn get_addr(&self) -> SocketAddr {
         self.addr
     }
@@ -536,10 +546,12 @@ mod tests {
         assert_eq!(p.get_hostname(), "example.com");
         assert_eq!(p.get_host(), "example.com:8080");
         assert_eq!(p.get_valid_host(), "example.com:8080");
+        assert_eq!(p.get_port_str(), "8080");
 
         let p = PeerInfo::new("example.com".to_owned(), eg_addr);
         assert_eq!(p.get_hostname(), "example.com");
         assert_eq!(p.get_host(), "example.com");
         assert_eq!(p.get_valid_host(), "example.com:80");
+        assert_eq!(p.get_port_str(), "80");
     }
 }
