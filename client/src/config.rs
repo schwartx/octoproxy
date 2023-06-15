@@ -8,6 +8,7 @@ use octoproxy_lib::proxy_client::ProxyConnector;
 use tracing::metadata::LevelFilter;
 
 use std::collections::BTreeMap;
+use std::ops::ControlFlow;
 use std::path::PathBuf;
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
@@ -109,6 +110,24 @@ impl HostModifier {
             return Some(r);
         }
         None
+    }
+
+    fn choose_backend(
+        &self,
+        peer: &PeerInfo,
+        backends: std::slice::Iter<'_, ConfigBackend>,
+    ) -> ControlFlow<Option<Arc<RwLock<Backend>>>, ()> {
+        if let Some(spec_backend_name) = self.route(peer.get_hostname()) {
+            for b in backends {
+                if b.metric.backend_name == spec_backend_name {
+                    return ControlFlow::Break(Some(b.backend.clone()));
+                }
+            }
+            // not found
+            return ControlFlow::Break(None);
+        }
+        // ignore
+        ControlFlow::Continue(())
     }
 }
 
@@ -212,29 +231,42 @@ impl Config {
             .await
     }
 
+    /// - if `config` has `host_modifier`, use it to find the corresponding backend:
+    ///   - If not found, return None
+    ///   - If found, return the backend if backend's status is normal
+    /// - If `config` does not have `host_modifier`, use load balancing algorithm.
     pub(crate) async fn next_available_backend(
         &self,
         peer: &PeerInfo,
     ) -> Option<Arc<RwLock<Backend>>> {
+        if let Some(ref host_modifier) = self.host_modifier {
+            match host_modifier.choose_backend(peer, self.backends.iter()) {
+                ControlFlow::Continue(_) => {}
+                ControlFlow::Break(None) => {
+                    return None;
+                }
+                ControlFlow::Break(Some(b)) => {
+                    if b.read().await.get_status() == BackendStatus::Normal {
+                        return Some(b.clone());
+                    } else {
+                        return None;
+                    }
+                }
+            };
+        };
+
         let backends = self.available_backends().await;
         if backends.is_empty() {
             return None;
         }
+
         if backends.len() == 1 {
             backends
                 .get(0)
-                .filter(|config_backend| {
-                    self.choose_backend(peer.get_host(), config_backend)
-                        .is_some()
-                })
                 .map(|config_backend| config_backend.backend.clone())
         } else {
             self.balance
                 .next_available_backend(&backends, peer)
-                .filter(|config_backend| {
-                    self.choose_backend(peer.get_host(), config_backend)
-                        .is_some()
-                })
                 .map(|b| b.backend)
         }
     }
@@ -252,27 +284,6 @@ impl Config {
         }
 
         peer_info.get_valid_host()
-    }
-
-    fn choose_backend<'a>(
-        &self,
-        req_host: &str,
-        config_backend: &'a ConfigBackend,
-    ) -> Option<&'a ConfigBackend> {
-        if let Some(ref host_modifier) = self.host_modifier {
-            if let Some(spec_backend_name) = host_modifier.route(req_host) {
-                if spec_backend_name == config_backend.metric.backend_name {
-                    info!("choosing backend: {}", spec_backend_name);
-                    // give back the backend
-                    return Some(config_backend);
-                } else {
-                    return None;
-                }
-            }
-            // backend name not found, give back the backend
-        }
-        // no modifier, give back a backend
-        Some(config_backend)
     }
 }
 

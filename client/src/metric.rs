@@ -197,11 +197,6 @@ impl PeerInfo {
         }
     }
 
-    /// get the original request host
-    pub(crate) fn get_host(&self) -> &str {
-        &self.host
-    }
-
     /// this would fill up port number if original host not have
     pub(crate) fn get_valid_host(&self) -> String {
         match self.port_index {
@@ -539,13 +534,11 @@ mod tests {
 
         let p = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
         assert_eq!(p.get_hostname(), "example.com");
-        assert_eq!(p.get_host(), "example.com:8080");
         assert_eq!(p.get_valid_host(), "example.com:8080");
         assert_eq!(p.get_port_str(), "8080");
 
         let p = PeerInfo::new("example.com".to_owned(), eg_addr);
         assert_eq!(p.get_hostname(), "example.com");
-        assert_eq!(p.get_host(), "example.com");
         assert_eq!(p.get_valid_host(), "example.com:80");
         assert_eq!(p.get_port_str(), "80");
     }
