@@ -38,7 +38,7 @@ http2 = { keep_alive_interval = 1, keep_alive_timeout = 1, keep_alive_while_idle
 
 # bbr, cubic
 quic = { max_idle_timeout = 200, keep_alive_interval = 0, ipv4_only = true, expected_rtt = 300, max_stream_bandwidth = 2097152, congestion = "bbr" }
-status = "force_closed"
+# status = "force_closed"
 
 # local server 1
 [backends.local2]

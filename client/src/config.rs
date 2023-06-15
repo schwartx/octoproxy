@@ -233,27 +233,27 @@ impl Config {
         }
     }
 
-    pub(crate) fn rewrite_host(&self, peer_info: &mut PeerInfo) {
+    pub(crate) fn rewrite_host(&self, peer_info: &PeerInfo) -> String {
         if let Some(ref h) = self.host_modifier {
             let (host, port_str) = host_checker(&peer_info.host);
 
             if let Some(host) = h.rewrite(host) {
                 info!("host is rewritten: {}", host);
-                let port_str = port_str.to_string();
-                peer_info.host.clear();
-                // "example.com" + ":" + "8080"
-                peer_info.host.push_str(host);
-                peer_info.host.push(':');
-                peer_info.host.push_str(&port_str);
+
+                let mut host = host.to_owned();
+                host.push(':');
+                host.push_str(&port_str.to_string());
+                return host;
             } else if let PortStr::Default = port_str {
-                let port_str = port_str.to_string();
-                let host = host.to_owned();
-                peer_info.host.clear();
-                peer_info.host.push_str(&host);
-                peer_info.host.push(':');
-                peer_info.host.push_str(&port_str);
+                // add the default port if the port is missing
+                let mut host = host.to_owned();
+                host.push(':');
+                host.push_str(&port_str.to_string());
+                return host;
             }
         }
+
+        peer_info.host.to_owned()
     }
 
     fn choose_backend<'a>(
@@ -464,12 +464,12 @@ mod tests {
         })
         .unwrap();
 
-        let mut peer = PeerInfo {
+        let peer = PeerInfo {
             host: "hello.com:8080".to_string(),
             addr: "127.0.0.1:14000".parse().unwrap(),
         };
-        config.rewrite_host(&mut peer);
-        assert_eq!(peer.host, "127.0.0.1:8080")
+        let new_host = config.rewrite_host(&peer);
+        assert_eq!(new_host, "127.0.0.1:8080")
     }
 
     fn build_config_reader(s: &str) -> std::io::BufReader<Cursor<&str>> {

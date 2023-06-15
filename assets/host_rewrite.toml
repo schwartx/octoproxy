@@ -2,5 +2,5 @@
 rewrite = "127.0.0.1"
 
 ["hello.com"]
-backend = "local2"
+backend = "local1"
 rewrite = "127.0.0.1"

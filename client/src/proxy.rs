@@ -103,11 +103,8 @@ async fn listen_incoming_connection(
 async fn handle_connection(
     config: Arc<Config>,
     inbound: IncomingConnection,
-    mut peer: PeerInfo,
+    peer: PeerInfo,
 ) -> anyhow::Result<()> {
-    // host rewrite
-    config.rewrite_host(&mut peer);
-
     // begin transfer
     match inbound {
         IncomingConnection::NonConnectMethod(tx, req) => {
@@ -137,7 +134,9 @@ async fn handle_connection(
                 // err => try again and mark this backend as fail
                 let backend_guard = backend.read().await;
                 let start = Instant::now();
-                match backend_guard.try_connect(Some(peer.host.to_owned())).await {
+                // host rewrite
+                let host = config.rewrite_host(&peer);
+                match backend_guard.try_connect(Some(host)).await {
                     Ok(outbound) => {
                         break (outbound, start.elapsed(), backend.clone());
                     }
