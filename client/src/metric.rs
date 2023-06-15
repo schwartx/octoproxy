@@ -1,4 +1,3 @@
-#![allow(unused)]
 use anyhow::bail;
 use futures::{SinkExt, StreamExt};
 
@@ -9,11 +8,7 @@ use octoproxy_lib::metric::{
 use parking_lot::Mutex;
 use std::{borrow::Cow, collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
-use crate::{
-    backends::Backend,
-    config::{host_checker, Config},
-    proxy::retry_forever,
-};
+use crate::{backends::Backend, config::Config, proxy::retry_forever};
 use axum::{
     extract::{ws::Message, State, WebSocketUpgrade},
     response::IntoResponse,

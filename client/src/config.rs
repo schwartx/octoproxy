@@ -276,33 +276,6 @@ impl Config {
     }
 }
 
-pub(crate) enum PortStr<'a> {
-    Default,
-    NonDefault(&'a str),
-}
-
-impl PortStr<'_> {
-    const DEFUALT_PORT_STR: &'static str = "80";
-}
-
-impl ToString for PortStr<'_> {
-    fn to_string(&self) -> String {
-        match self {
-            PortStr::Default => PortStr::DEFUALT_PORT_STR.to_owned(),
-            PortStr::NonDefault(port_str) => port_str.to_string(),
-        }
-    }
-}
-
-/// This checks if a port number is present. If it is not, it will add the port number 80.
-/// It will also extract the host for checking and matching host rewriting rules.
-pub(crate) fn host_checker(host: &str) -> (&str, PortStr) {
-    match host.rsplit_once(':') {
-        Some((host, port_str)) => (host, PortStr::NonDefault(port_str)),
-        None => (host, PortStr::Default),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::{io::Cursor, path::PathBuf};
@@ -569,24 +542,5 @@ rewrite = "127.0.0.1"
 
         let res = host_modifier.route("google.com");
         assert!(res.is_none(), "google.com should not be in the rule");
-    }
-
-    #[test]
-    fn test_host_checker() {
-        let (host, port_str) = host_checker("example.com:80");
-        assert_eq!(host, "example.com");
-        assert!(matches!(port_str, PortStr::NonDefault("80")));
-
-        let (host, port_str) = host_checker("example.com");
-        assert_eq!(host, "example.com");
-        assert!(matches!(port_str, PortStr::Default));
-
-        let (host, port_str) = host_checker(":80");
-        assert_eq!(host, "");
-        assert!(matches!(port_str, PortStr::NonDefault("80")));
-
-        let (host, port_str) = host_checker("example.com:8080");
-        assert_eq!(host, "example.com");
-        assert!(matches!(port_str, PortStr::NonDefault("8080")));
     }
 }
