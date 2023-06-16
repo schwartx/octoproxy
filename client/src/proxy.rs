@@ -15,7 +15,6 @@ use hyper::upgrade::Upgraded;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-use crate::config::{HostRuleSection, HostRules};
 use crate::metric::PeerInfo;
 use crate::{backends::Backend, config::Config};
 
@@ -122,7 +121,7 @@ async fn handle_connection(
         IncomingConnection::ConnectMethod(inbound) => {
             let (outbound, connection_time, backend) = loop {
                 let backend = {
-                    match config.next_available_backend(&mut peer).await {
+                    match config.next_available_backend(&peer).await {
                         crate::config::AvailableBackend::GotBackend(backend) => backend,
                         crate::config::AvailableBackend::Block => {
                             return Ok(());
@@ -140,20 +139,7 @@ async fn handle_connection(
                 let backend_guard = backend.read().await;
                 let start = Instant::now();
 
-                let host = if let HostRules::GotRule(HostRuleSection {
-                    rewrite: Some(ref host),
-                    backend: _,
-                }) = peer.get_rule()
-                {
-                    info!("host is rewritten: {}", host);
-
-                    let mut host = host.to_owned();
-                    host.push(':');
-                    host.push_str(&peer.get_port_str());
-                    host
-                } else {
-                    peer.get_valid_host()
-                };
+                let host = peer.get_host_by_rule();
 
                 match backend_guard.try_connect(Some(host)).await {
                     Ok(outbound) => {

@@ -237,6 +237,34 @@ impl PeerInfo {
     pub(crate) fn get_rule(&self) -> &HostRules {
         &self.rule
     }
+
+    pub(crate) fn get_host_by_rule(&self) -> String {
+        if let HostRules::GotRule(HostRuleSection {
+            rewrite: Some(ref host),
+            backend: _,
+        }) = self.get_rule()
+        {
+            info!("host is rewritten: {}", host);
+
+            let mut host = host.to_owned();
+            host.push(':');
+            host.push_str(&self.get_port_str());
+            host
+        } else {
+            self.get_valid_host()
+        }
+    }
+
+    pub(crate) fn get_backend_name_by_rule(&self) -> Option<&str> {
+        if let HostRules::GotRule(HostRuleSection {
+            rewrite: _,
+            backend: Some(ref backend_name),
+        }) = self.get_rule()
+        {
+            return Some(backend_name);
+        }
+        None
+    }
 }
 
 #[derive(Debug, Hash)]
@@ -555,5 +583,27 @@ mod tests {
         assert_eq!(p.get_hostname(), "example.com");
         assert_eq!(p.get_valid_host(), "example.com:80");
         assert_eq!(p.get_port_str(), "80");
+    }
+
+    #[test]
+    fn test_new_peer_info_rule() {
+        let eg_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+
+        let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
+        peer.set_rule(HostRules::NoRule);
+        assert_eq!(peer.get_host_by_rule(), "example.com:8080");
+
+        peer.set_rule(HostRules::GotRule(HostRuleSection {
+            rewrite: Some("hello.com".to_owned()),
+            backend: None,
+        }));
+        assert_eq!(peer.get_host_by_rule(), "hello.com:8080");
+
+        let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
+        peer.set_rule(HostRules::GotRule(HostRuleSection {
+            rewrite: None,
+            backend: Some("local1".to_owned()),
+        }));
+        assert_eq!(peer.get_backend_name_by_rule(), Some("local1"));
     }
 }
