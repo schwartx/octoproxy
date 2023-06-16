@@ -15,6 +15,7 @@ use hyper::upgrade::Upgraded;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
+use crate::config::{HostRuleSection, HostRules};
 use crate::metric::PeerInfo;
 use crate::{backends::Backend, config::Config};
 
@@ -101,8 +102,11 @@ async fn listen_incoming_connection(
 async fn handle_connection(
     config: Arc<Config>,
     inbound: IncomingConnection,
-    peer: PeerInfo,
+    mut peer: PeerInfo,
 ) -> anyhow::Result<()> {
+    // set host rule
+    config.find_rule_for_peer(&mut peer);
+
     // begin transfer
     match inbound {
         IncomingConnection::NonConnectMethod(tx, req) => {
@@ -118,7 +122,7 @@ async fn handle_connection(
         IncomingConnection::ConnectMethod(inbound) => {
             let (outbound, connection_time, backend) = loop {
                 let backend = {
-                    match config.next_available_backend(&peer).await {
+                    match config.next_available_backend(&mut peer).await {
                         crate::config::AvailableBackend::GotBackend(backend) => backend,
                         crate::config::AvailableBackend::Block => {
                             return Ok(());
@@ -135,8 +139,22 @@ async fn handle_connection(
                 // err => try again and mark this backend as fail
                 let backend_guard = backend.read().await;
                 let start = Instant::now();
-                // host rewrite
-                let host = config.rewrite_host(&peer);
+
+                let host = if let HostRules::GotRule(HostRuleSection {
+                    rewrite: Some(ref host),
+                    backend: _,
+                }) = peer.get_rule()
+                {
+                    info!("host is rewritten: {}", host);
+
+                    let mut host = host.to_owned();
+                    host.push(':');
+                    host.push_str(&peer.get_port_str());
+                    host
+                } else {
+                    peer.get_valid_host()
+                };
+
                 match backend_guard.try_connect(Some(host)).await {
                     Ok(outbound) => {
                         break (outbound, start.elapsed(), backend.clone());

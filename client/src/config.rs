@@ -60,10 +60,17 @@ pub(crate) struct ConfigBackend {
 #[derive(Debug, Deserialize)]
 struct HostRuler(BTreeMap<String, HostRuleSection>);
 
-#[derive(Debug, Deserialize)]
-struct HostRuleSection {
-    rewrite: Option<String>,
-    backend: Option<String>,
+#[derive(Debug, Deserialize, Hash, Clone)]
+pub(crate) struct HostRuleSection {
+    pub(crate) rewrite: Option<String>,
+    pub(crate) backend: Option<String>,
+}
+
+#[derive(Debug, Hash)]
+pub(crate) enum HostRules {
+    Unknown,
+    NoRule,
+    GotRule(HostRuleSection),
 }
 
 impl TomlFileConfig for HostRuler {}
@@ -109,6 +116,7 @@ impl HostRuler {
         None
     }
 
+    #[allow(unused)]
     fn choose_backend(
         &self,
         peer: &PeerInfo,
@@ -125,6 +133,18 @@ impl HostRuler {
         }
         // ignore
         AvailableBackend::NoBackend
+    }
+
+    fn find_rule(&self, peer: &mut PeerInfo) {
+        if matches!(peer.get_rule(), HostRules::NoRule) {
+            return;
+        }
+
+        let rule = self.0.get(peer.get_hostname());
+        peer.set_rule(match rule {
+            Some(rule) => HostRules::GotRule(rule.clone()),
+            None => HostRules::NoRule,
+        })
     }
 }
 
@@ -238,22 +258,24 @@ impl Config {
     ///   - If not found, return None
     ///   - If found, return the backend if backend's status is normal
     /// - If `config` does not have `host_ruler`, use load balancing algorithm.
-    pub(crate) async fn next_available_backend(&self, peer: &PeerInfo) -> AvailableBackend {
-        if let Some(ref host_ruler) = self.host_rule {
-            match host_ruler.choose_backend(peer, self.backends.iter()) {
-                AvailableBackend::NoBackend => {}
-                AvailableBackend::GotBackend(b) => {
-                    if b.read().await.get_status() == BackendStatus::Normal {
-                        return AvailableBackend::GotBackend(b.clone());
+    pub(crate) async fn next_available_backend(&self, peer: &mut PeerInfo) -> AvailableBackend {
+        if let HostRules::GotRule(HostRuleSection {
+            rewrite: _,
+            backend: Some(ref spec_backend_name),
+        }) = peer.get_rule()
+        {
+            for config_backend in self.backends.iter() {
+                if config_backend.metric.backend_name.as_str() == spec_backend_name.as_str() {
+                    if config_backend.backend.read().await.get_status() == BackendStatus::Normal {
+                        return AvailableBackend::GotBackend(config_backend.backend.clone());
                     } else {
                         return AvailableBackend::Block;
                     }
                 }
-                AvailableBackend::Block => {
-                    return AvailableBackend::Block;
-                }
-            };
-        };
+            }
+            // not found
+            return AvailableBackend::Block;
+        }
 
         let backends = self.available_backends().await;
         if backends.is_empty() {
@@ -261,7 +283,7 @@ impl Config {
         }
 
         if backends.len() == 1 {
-            AvailableBackend::GotBackend(backends.get(0).unwrap().backend.clone())
+            AvailableBackend::GotBackend(backends.first().unwrap().backend.clone())
         } else {
             match self.balance.next_available_backend(&backends, peer) {
                 Some(config_backend) => AvailableBackend::GotBackend(config_backend.backend),
@@ -270,6 +292,7 @@ impl Config {
         }
     }
 
+    #[allow(unused)]
     pub(crate) fn rewrite_host(&self, peer_info: &PeerInfo) -> String {
         if let Some(ref h) = self.host_rule {
             if let Some(host) = h.rewrite(peer_info.get_hostname()) {
@@ -283,6 +306,12 @@ impl Config {
         }
 
         peer_info.get_valid_host()
+    }
+
+    pub(crate) fn find_rule_for_peer(&self, peer: &mut PeerInfo) {
+        if let Some(ref h) = self.host_rule {
+            h.find_rule(peer)
+        }
     }
 }
 
@@ -364,7 +393,9 @@ mod tests {
 
         let res = config.available_backends().await;
         assert_eq!(res.len(), 1, "incorrect config available backends len");
-        let next_backend = config.next_available_backend(&empty_host_peer_info()).await;
+        let next_backend = config
+            .next_available_backend(&mut empty_host_peer_info())
+            .await;
         let next_backend = match next_backend {
             AvailableBackend::GotBackend(b) => b,
             _ => unreachable!("Should not be other value"),
@@ -380,7 +411,9 @@ mod tests {
 
         let res = config.available_backends().await;
         assert_eq!(res.len(), 0, "should be no backend");
-        let next_backend = config.next_available_backend(&empty_host_peer_info()).await;
+        let next_backend = config
+            .next_available_backend(&mut empty_host_peer_info())
+            .await;
 
         assert!(
             matches!(next_backend, AvailableBackend::NoBackend),
@@ -450,12 +483,12 @@ mod tests {
         })
         .unwrap();
 
-        let peer = PeerInfo::new(
+        let mut peer = PeerInfo::new(
             "hello.com:8080".to_string(),
             "127.0.0.1:14000".parse().unwrap(),
         );
 
-        let new_host = config.rewrite_host(&peer);
+        let new_host = config.rewrite_host(&mut peer);
         assert_eq!(new_host, "127.0.0.1:8080")
     }
 
