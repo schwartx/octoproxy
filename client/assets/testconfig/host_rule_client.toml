@@ -2,7 +2,7 @@
 listen_address = "0.0.0.0:8081"
 metric_address = "127.0.0.1:8403"
 log_level = "info"
-host_modify = "assets/host_rewrite.toml"
+host_rule = "assets/host_rule.toml"
 balance = "frist"
 
 [backends]

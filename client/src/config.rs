@@ -30,7 +30,7 @@ struct FileConfig {
     listen_address: String,
     log_level: String,
     balance: Balance,
-    host_modify: Option<PathBuf>,
+    host_rule: Option<PathBuf>,
     /// listen address for metric service
     metric_address: String,
     backends: HashMap<String, FileBackendConfig>,
@@ -46,7 +46,7 @@ pub(crate) struct Config {
     pub(crate) balance: Box<dyn LoadBalancingAlgorithm<ConfigBackend> + Send + Sync + 'static>,
     pub(crate) backends: Vec<ConfigBackend>,
 
-    host_modifier: Option<HostModifier>,
+    host_rule: Option<HostRuler>,
 
     pub(crate) non_connect_method_client: Client<ProxyConnector<HttpConnector>>,
 }
@@ -57,22 +57,20 @@ pub(crate) struct ConfigBackend {
     pub(crate) metric: Arc<Metric>,
 }
 
-// modifier
 #[derive(Debug, Deserialize)]
-struct HostModifier(BTreeMap<String, HostModifySection>);
+struct HostRuler(BTreeMap<String, HostRuleSection>);
 
 #[derive(Debug, Deserialize)]
-struct HostModifySection {
+struct HostRuleSection {
     rewrite: Option<String>,
     backend: Option<String>,
 }
 
-impl TomlFileConfig for HostModifier {}
+impl TomlFileConfig for HostRuler {}
 
-impl HostModifier {
+impl HostRuler {
     fn new(host_file: impl std::io::Read) -> anyhow::Result<Option<Self>> {
-        let mut this =
-            Self::load_from_read(host_file).context("Failed to parse host modify toml")?;
+        let mut this = Self::load_from_read(host_file).context("Failed to parse host rule toml")?;
 
         let mut map = BTreeMap::new();
         for (sec_name, sec) in this.0 {
@@ -90,7 +88,7 @@ impl HostModifier {
     }
 
     fn rewrite(&self, req_host: &str) -> Option<&str> {
-        if let Some(&HostModifySection {
+        if let Some(&HostRuleSection {
             rewrite: Some(ref r),
             backend: _,
         }) = self.0.get(req_host)
@@ -101,7 +99,7 @@ impl HostModifier {
     }
 
     fn route(&self, req_host: &str) -> Option<&str> {
-        if let Some(&HostModifySection {
+        if let Some(&HostRuleSection {
             rewrite: _,
             backend: Some(ref r),
         }) = self.0.get(req_host)
@@ -165,11 +163,11 @@ impl Config {
         let non_connect_method_client =
             hyper::client::Client::builder().build::<_, hyper::Body>(proxy);
 
-        let host_modifier = if let Some(host_modifier) = file_config.host_modify {
-            let host_modifier =
-                std::fs::File::open(host_modifier).context("Failed to open host rewrite file")?;
+        let host_ruler = if let Some(host_ruler) = file_config.host_rule {
+            let host_ruler =
+                std::fs::File::open(host_ruler).context("Failed to open host rewrite file")?;
 
-            HostModifier::new(host_modifier).context("Failed to parse host rewrite config")?
+            HostRuler::new(host_ruler).context("Failed to parse host rewrite config")?
         } else {
             None
         };
@@ -180,7 +178,7 @@ impl Config {
             balance: Box::new(Frist),
             metric_address,
             log_level,
-            host_modifier,
+            host_rule: host_ruler,
             non_connect_method_client,
         };
 
@@ -236,13 +234,13 @@ impl Config {
             .await
     }
 
-    /// - if `config` has `host_modifier`, use it to find the corresponding backend:
+    /// - if `config` has `host_ruler`, use it to find the corresponding backend:
     ///   - If not found, return None
     ///   - If found, return the backend if backend's status is normal
-    /// - If `config` does not have `host_modifier`, use load balancing algorithm.
+    /// - If `config` does not have `host_ruler`, use load balancing algorithm.
     pub(crate) async fn next_available_backend(&self, peer: &PeerInfo) -> AvailableBackend {
-        if let Some(ref host_modifier) = self.host_modifier {
-            match host_modifier.choose_backend(peer, self.backends.iter()) {
+        if let Some(ref host_ruler) = self.host_rule {
+            match host_ruler.choose_backend(peer, self.backends.iter()) {
                 AvailableBackend::NoBackend => {}
                 AvailableBackend::GotBackend(b) => {
                     if b.read().await.get_status() == BackendStatus::Normal {
@@ -273,7 +271,7 @@ impl Config {
     }
 
     pub(crate) fn rewrite_host(&self, peer_info: &PeerInfo) -> String {
-        if let Some(ref h) = self.host_modifier {
+        if let Some(ref h) = self.host_rule {
             if let Some(host) = h.rewrite(peer_info.get_hostname()) {
                 info!("host is rewritten: {}", host);
 
@@ -445,10 +443,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_config_host_rewrite() {
+    async fn test_config_host_rule() {
         let config = Config::new(Cmd {
             listen_address: Some("8080".to_owned()),
-            config: PathBuf::from("assets/testconfig/host_rewrite_client.toml"),
+            config: PathBuf::from("assets/testconfig/host_rule_client.toml"),
         })
         .unwrap();
 
@@ -466,8 +464,8 @@ mod tests {
     }
 
     #[test]
-    fn test_new_host_modifier() {
-        let host_modifier_file = r#"
+    fn test_new_host_ruler() {
+        let host_ruler_file = r#"
 ["example.com"]
 rewrite = "hello.com"
 backend = "local1"
@@ -478,45 +476,45 @@ rewrite = "127.0.0.1"
 [world]
 
         "#;
-        let host_modify_file = build_config_reader(host_modifier_file);
-        let host_modifier = HostModifier::new(host_modify_file).unwrap();
-        assert!(host_modifier.is_some(), "parse normal config");
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file).unwrap();
+        assert!(host_ruler.is_some(), "parse normal config");
 
-        let host_modify_file = r#"
+        let host_ruler_file = r#"
 
         "#;
-        let host_modify_file = build_config_reader(host_modify_file);
-        let host_modifier = HostModifier::new(host_modify_file).unwrap();
-        assert!(host_modifier.is_none(), "parse empty config");
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file).unwrap();
+        assert!(host_ruler.is_none(), "parse empty config");
 
-        let host_modify_file = r#"
+        let host_ruler_file = r#"
 [hello]
 
 [world]
         "#;
-        let host_modify_file = build_config_reader(host_modify_file);
-        let host_modifier = HostModifier::new(host_modify_file).unwrap();
-        assert!(host_modifier.is_none(), "parse empty sections config");
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file).unwrap();
+        assert!(host_ruler.is_none(), "parse empty sections config");
 
-        let host_modify_file = r#"
+        let host_ruler_file = r#"
 aaaaaaaaaaaaaaaaa
         "#;
-        let host_modify_file = build_config_reader(host_modify_file);
-        let host_modifier = HostModifier::new(host_modify_file);
-        assert!(host_modifier.is_err(), "parse invalid config");
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file);
+        assert!(host_ruler.is_err(), "parse invalid config");
 
-        let host_modify_file = r#"
+        let host_ruler_file = r#"
 [hello]
 [hello]
         "#;
-        let host_modify_file = build_config_reader(host_modify_file);
-        let host_modifier = HostModifier::new(host_modify_file);
-        assert!(host_modifier.is_err(), "parse dup sections config")
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file);
+        assert!(host_ruler.is_err(), "parse dup sections config")
     }
 
     #[test]
-    fn test_host_modifier_rewrite() {
-        let host_modify_file = r#"
+    fn test_host_ruler_rewrite() {
+        let host_ruler_file = r#"
 ["example.com"]
 rewrite = "hello.com"
 backend = "local1"
@@ -524,24 +522,24 @@ backend = "local1"
 [hello]
 rewrite = "127.0.0.1"
         "#;
-        let host_modify_file = build_config_reader(host_modify_file);
-        let host_modifier = HostModifier::new(host_modify_file).unwrap();
-        assert!(host_modifier.is_some(), "parse normal config");
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file).unwrap();
+        assert!(host_ruler.is_some(), "parse normal config");
 
-        let host_modifier = host_modifier.unwrap();
+        let host_ruler = host_ruler.unwrap();
 
-        let res = host_modifier.rewrite("example.com");
+        let res = host_ruler.rewrite("example.com");
         assert!(res.is_some(), "example.com should be in the rule");
         let res = res.unwrap();
         assert_eq!(res, "hello.com", "rewrite example.com into hello.com");
 
-        let res = host_modifier.rewrite("google.com");
+        let res = host_ruler.rewrite("google.com");
         assert!(res.is_none(), "google.com should not be in the rule");
     }
 
     #[test]
-    fn test_host_modifier_route() {
-        let host_modify_file = r#"
+    fn test_host_ruler_route() {
+        let host_ruler_file = r#"
 ["example.com"]
 rewrite = "hello.com"
 backend = "local1"
@@ -549,18 +547,18 @@ backend = "local1"
 [hello]
 rewrite = "127.0.0.1"
         "#;
-        let host_modify_file = build_config_reader(host_modify_file);
-        let host_modifier = HostModifier::new(host_modify_file).unwrap();
-        assert!(host_modifier.is_some(), "parse normal config");
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file).unwrap();
+        assert!(host_ruler.is_some(), "parse normal config");
 
-        let host_modifier = host_modifier.unwrap();
+        let host_ruler = host_ruler.unwrap();
 
-        let res = host_modifier.route("example.com");
+        let res = host_ruler.route("example.com");
         assert!(res.is_some(), "example.com should be in the rule");
         let res = res.unwrap();
         assert_eq!(res, "local1", "route example.com to local1");
 
-        let res = host_modifier.route("google.com");
+        let res = host_ruler.route("google.com");
         assert!(res.is_none(), "google.com should not be in the rule");
     }
 }
