@@ -1,5 +1,4 @@
 use anyhow::Context;
-use futures::stream::{self, StreamExt};
 use hashring::HashRing;
 use hyper::client::HttpConnector;
 use hyper::Client;
@@ -173,17 +172,17 @@ impl Config {
         })
     }
 
-    async fn available_backends(&self) -> Vec<ConfigBackend> {
-        stream::iter(self.backends.iter())
-            .filter_map(|backend| async move {
-                if backend.backend.read().await.get_status() == BackendStatus::Normal {
-                    Some(backend.clone())
+    fn available_backends(&self) -> Vec<ConfigBackend> {
+        self.backends
+            .iter()
+            .filter_map(|config_backend| {
+                if config_backend.metric.get_status() == BackendStatus::Normal {
+                    Some(config_backend.clone())
                 } else {
                     None
                 }
             })
             .collect()
-            .await
     }
 
     /// - if `config` has `host_ruler`, use it to find the corresponding backend:
@@ -212,7 +211,7 @@ impl Config {
             }
         };
 
-        let backends = self.available_backends().await;
+        let backends = self.available_backends();
         if backends.is_empty() {
             return AvailableBackend::NoBackend;
         }
@@ -350,7 +349,7 @@ mod tests {
         let first_config_backend = config.backends.first().unwrap().clone();
         config.backends = Arc::from([first_config_backend, second_config_backend]);
 
-        let res = config.available_backends().await;
+        let res = config.available_backends();
         assert_eq!(res.len(), 1, "incorrect config available backends len");
         let next_backend = config
             .next_available_backend(&mut empty_host_peer_info())
@@ -368,7 +367,7 @@ mod tests {
         // make the first backend down
         first_backend.read().await.set_status(BackendStatus::Closed);
 
-        let res = config.available_backends().await;
+        let res = config.available_backends();
         assert_eq!(res.len(), 0, "should be no backend");
         let next_backend = config
             .next_available_backend(&mut empty_host_peer_info())
