@@ -160,17 +160,14 @@ impl Config {
 
         let mut config = Self {
             listen_address,
-            backends: Vec::new(),
+            backends: populate_backends(file_config.backends)
+                .context("Could not setup backends")?,
             balance: Box::new(Frist),
             metric_address,
             log_level,
             host_rule: host_ruler,
             non_connect_method_client,
         };
-
-        config
-            .populate_backends(file_config.backends)
-            .context("Could not setup backends")?;
 
         config.balance = match file_config.balance {
             Balance::RoundRobin => Box::new(RoundRobin::new()),
@@ -189,22 +186,6 @@ impl Config {
         info!("load balance algorithm: {:?}", file_config.balance);
 
         Ok(config)
-    }
-
-    fn populate_backends(
-        &mut self,
-        mut file_backend_configs: HashMap<String, FileBackendConfig>,
-    ) -> anyhow::Result<()> {
-        for (file_backend_name, file_backend_config) in file_backend_configs.drain() {
-            let backend = Backend::new(file_backend_name, file_backend_config)
-                .context("Fail to initialize backend")?;
-
-            self.backends.push(ConfigBackend {
-                metric: Arc::new(backend.metric.clone()),
-                backend: Arc::new(RwLock::new(backend)),
-            });
-        }
-        Ok(())
     }
 
     async fn available_backends(&self) -> Vec<ConfigBackend> {
@@ -266,6 +247,22 @@ impl Config {
             h.find_rule(peer)
         }
     }
+}
+
+fn populate_backends(
+    mut file_backend_configs: HashMap<String, FileBackendConfig>,
+) -> anyhow::Result<Vec<ConfigBackend>> {
+    let mut backends = Vec::new();
+    for (file_backend_name, file_backend_config) in file_backend_configs.drain() {
+        let backend = Backend::new(file_backend_name, file_backend_config)
+            .context("Fail to initialize backend")?;
+
+        backends.push(ConfigBackend {
+            metric: Arc::new(backend.metric.clone()),
+            backend: Arc::new(RwLock::new(backend)),
+        });
+    }
+    Ok(backends)
 }
 
 #[cfg(test)]
