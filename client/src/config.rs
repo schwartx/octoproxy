@@ -64,6 +64,13 @@ struct HostRuler(BTreeMap<String, HostRuleSection>);
 pub(crate) struct HostRuleSection {
     pub(crate) rewrite: Option<String>,
     pub(crate) backend: Option<String>,
+    #[serde(default = "default_is_not_direct")]
+    #[allow(unused)]
+    pub(crate) direct: bool,
+}
+
+fn default_is_not_direct() -> bool {
+    false
 }
 
 #[derive(Debug)]
@@ -498,6 +505,7 @@ rewrite = "127.0.0.1"
             HostRules::GotRule(HostRuleSection {
                 rewrite: Some(_),
                 backend: Some(_),
+                direct: _,
             })
         ));
 
@@ -509,6 +517,7 @@ rewrite = "127.0.0.1"
             HostRules::GotRule(HostRuleSection {
                 rewrite: Some(_),
                 backend: None,
+                direct: _,
             })
         ));
 

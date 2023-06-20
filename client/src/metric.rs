@@ -242,6 +242,7 @@ impl PeerInfo {
         if let HostRules::GotRule(HostRuleSection {
             rewrite: Some(ref host),
             backend: _,
+            direct: _,
         }) = self.get_rule()
         {
             info!("host is rewritten: {}", host);
@@ -259,6 +260,7 @@ impl PeerInfo {
         if let HostRules::GotRule(HostRuleSection {
             rewrite: _,
             backend: Some(ref backend_name),
+            direct: _,
         }) = self.get_rule()
         {
             return Some(backend_name);
@@ -596,6 +598,7 @@ mod tests {
         peer.set_rule(HostRules::GotRule(HostRuleSection {
             rewrite: Some("hello.com".to_owned()),
             backend: None,
+            direct: false,
         }));
         assert_eq!(peer.get_host_by_rule(), "hello.com:8080");
 
@@ -603,6 +606,7 @@ mod tests {
         peer.set_rule(HostRules::GotRule(HostRuleSection {
             rewrite: None,
             backend: Some("local1".to_owned()),
+            direct: false,
         }));
         assert_eq!(peer.get_backend_name_by_rule(), Some("local1"));
     }
