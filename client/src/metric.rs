@@ -256,7 +256,7 @@ impl PeerInfo {
         }
     }
 
-    pub(crate) fn get_backend_name_by_rule(&self) -> Option<&str> {
+    pub(crate) fn get_backend_name_by_rule(&self) -> PeerBackendRule {
         if let HostRules::GotRule(HostRuleSection {
             rewrite: _,
             backend: Some(ref backend_name),
@@ -265,12 +265,18 @@ impl PeerInfo {
         {
             // TODO: should I need this ?
             if *direct {
-                return None;
+                return PeerBackendRule::Direct;
             }
-            return Some(backend_name);
+            return PeerBackendRule::GotBackend(&backend_name);
         }
-        None
+        PeerBackendRule::NoRule
     }
+}
+
+pub(crate) enum PeerBackendRule<'a> {
+    NoRule,
+    Direct,
+    GotBackend(&'a str),
 }
 
 #[derive(Debug, Hash)]
@@ -612,9 +618,11 @@ mod tests {
             backend: Some("local1".to_owned()),
             direct: false,
         }));
-        assert_eq!(
-            peer.get_backend_name_by_rule(),
-            Some("local1"),
+        assert!(
+            matches!(
+                peer.get_backend_name_by_rule(),
+                PeerBackendRule::GotBackend("local1"),
+            ),
             "routed backend rule"
         );
 
@@ -624,7 +632,11 @@ mod tests {
             backend: None,
             direct: false,
         }));
-        assert_eq!(peer.get_backend_name_by_rule(), None, "no rules");
+
+        assert!(
+            matches!(peer.get_backend_name_by_rule(), PeerBackendRule::NoRule,),
+            "no rules"
+        );
 
         let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
         peer.set_rule(HostRules::GotRule(HostRuleSection {
@@ -632,7 +644,11 @@ mod tests {
             backend: None,
             direct: true,
         }));
-        assert_eq!(peer.get_backend_name_by_rule(), None, "no rules for direct");
+
+        assert!(
+            matches!(peer.get_backend_name_by_rule(), PeerBackendRule::NoRule,),
+            "no rules for direct"
+        );
 
         let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
         peer.set_rule(HostRules::GotRule(HostRuleSection {
@@ -640,9 +656,9 @@ mod tests {
             backend: Some("local1".to_owned()),
             direct: true,
         }));
-        assert_eq!(
-            peer.get_backend_name_by_rule(),
-            None,
+
+        assert!(
+            matches!(peer.get_backend_name_by_rule(), PeerBackendRule::NoRule,),
             "direct ignores backend"
         );
     }

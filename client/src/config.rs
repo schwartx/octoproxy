@@ -21,7 +21,7 @@ use crate::backends::{Backend, FileBackendConfig};
 use crate::balance::{
     Balance, Frist, LeastLoadedTime, LoadBalancingAlgorithm, Random, RoundRobin, UriHash,
 };
-use crate::metric::{Metric, PeerInfo};
+use crate::metric::{Metric, PeerBackendRule, PeerInfo};
 use crate::Cmd;
 
 /// Config Toml
@@ -114,6 +114,7 @@ impl HostRuler {
 }
 
 pub(crate) enum AvailableBackend {
+    Direct,
     Block,
     NoBackend,
     GotBackend(Arc<RwLock<Backend>>),
@@ -224,19 +225,26 @@ impl Config {
     ///   - If found, return the backend if backend's status is normal
     /// - If `config` does not have `host_ruler`, use load balancing algorithm.
     pub(crate) async fn next_available_backend(&self, peer: &PeerInfo) -> AvailableBackend {
-        if let Some(spec_backend_name) = peer.get_backend_name_by_rule() {
-            for config_backend in self.backends.iter() {
-                if config_backend.metric.backend_name == spec_backend_name {
-                    if config_backend.backend.read().await.get_status() == BackendStatus::Normal {
-                        return AvailableBackend::GotBackend(config_backend.backend.clone());
-                    } else {
-                        return AvailableBackend::Block;
+        match peer.get_backend_name_by_rule() {
+            PeerBackendRule::NoRule => { /* ignore */ }
+            PeerBackendRule::GotBackend(spec_backend_name) => {
+                for config_backend in self.backends.iter() {
+                    if config_backend.metric.backend_name == spec_backend_name {
+                        if config_backend.backend.read().await.get_status() == BackendStatus::Normal
+                        {
+                            return AvailableBackend::GotBackend(config_backend.backend.clone());
+                        } else {
+                            return AvailableBackend::Block;
+                        }
                     }
                 }
+                // not found
+                return AvailableBackend::Block;
             }
-            // not found
-            return AvailableBackend::Block;
-        }
+            PeerBackendRule::Direct => {
+                return AvailableBackend::Direct;
+            }
+        };
 
         let backends = self.available_backends().await;
         if backends.is_empty() {

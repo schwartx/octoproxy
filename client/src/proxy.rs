@@ -15,6 +15,7 @@ use hyper::upgrade::Upgraded;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
+use crate::config::AvailableBackend;
 use crate::metric::PeerInfo;
 use crate::{backends::Backend, config::Config};
 
@@ -122,12 +123,16 @@ async fn handle_connection(
             let (outbound, connection_time, backend) = loop {
                 let backend = {
                     match config.next_available_backend(&peer).await {
-                        crate::config::AvailableBackend::GotBackend(backend) => backend,
-                        crate::config::AvailableBackend::Block => {
+                        AvailableBackend::GotBackend(backend) => backend,
+                        AvailableBackend::Block => {
                             return Ok(());
                         }
-                        crate::config::AvailableBackend::NoBackend => {
+                        AvailableBackend::NoBackend => {
                             debug!("no backend!");
+                            return Ok(());
+                        }
+                        AvailableBackend::Direct => {
+                            tokio::spawn(direct_connection(peer, inbound));
                             return Ok(());
                         }
                     }
@@ -171,6 +176,14 @@ async fn handle_connection(
             Ok(())
         }
     }
+}
+
+async fn direct_connection(peer: PeerInfo, mut inbound: Upgraded) -> anyhow::Result<()> {
+    let host = peer.get_host_by_rule();
+    let mut outbound = tokio::net::TcpStream::connect(host).await?;
+
+    tokio::io::copy_bidirectional(&mut inbound, &mut outbound).await?;
+    Ok(())
 }
 
 /// when a backend fail to connect the remote server, will go to this function,
