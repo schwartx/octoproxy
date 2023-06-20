@@ -60,13 +60,13 @@ pub(crate) struct ConfigBackend {
 #[derive(Debug, Deserialize)]
 struct HostRuler(BTreeMap<String, HostRuleSection>);
 
-#[derive(Debug, Deserialize, Hash, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub(crate) struct HostRuleSection {
     pub(crate) rewrite: Option<String>,
     pub(crate) backend: Option<String>,
 }
 
-#[derive(Debug, Hash)]
+#[derive(Debug)]
 pub(crate) enum HostRules {
     Unknown,
     NoRule,

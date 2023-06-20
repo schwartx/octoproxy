@@ -174,7 +174,7 @@ fn get_all_backends(config: &Arc<Config>) -> Vec<BackendMetric<'_>> {
         .collect::<Vec<_>>()
 }
 
-#[derive(Debug, Hash)]
+#[derive(Debug)]
 pub(crate) struct PeerInfo {
     host: String,
     addr: SocketAddr,
