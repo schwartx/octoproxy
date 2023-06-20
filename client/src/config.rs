@@ -158,34 +158,19 @@ impl Config {
             None
         };
 
-        let mut config = Self {
+        let balance = populate_load_balance(file_config.balance, file_config.backends.len());
+        let backends =
+            populate_backends(file_config.backends).context("Could not setup backends")?;
+
+        Ok(Self {
             listen_address,
-            backends: populate_backends(file_config.backends)
-                .context("Could not setup backends")?,
-            balance: Box::new(Frist),
+            balance,
+            backends,
             metric_address,
             log_level,
             host_rule: host_ruler,
             non_connect_method_client,
-        };
-
-        config.balance = match file_config.balance {
-            Balance::RoundRobin => Box::new(RoundRobin::new()),
-            Balance::Random => Box::new(Random {}),
-            Balance::LeastLoadedTime => Box::new(LeastLoadedTime {}),
-            Balance::UriHash => {
-                let mut ring: HashRing<usize> = HashRing::new();
-                for backend_id in 0..config.backends.len() {
-                    ring.add(backend_id)
-                }
-                Box::new(UriHash::new(ring))
-            }
-            Balance::Frist => Box::new(Frist),
-        };
-
-        info!("load balance algorithm: {:?}", file_config.balance);
-
-        Ok(config)
+        })
     }
 
     async fn available_backends(&self) -> Vec<ConfigBackend> {
@@ -249,6 +234,25 @@ impl Config {
     }
 }
 
+fn populate_load_balance(
+    balance: Balance,
+    backends_len: usize,
+) -> Box<dyn LoadBalancingAlgorithm<ConfigBackend> + Send + Sync + 'static> {
+    info!("load balance algorithm: {:?}", balance);
+    match balance {
+        Balance::RoundRobin => Box::new(RoundRobin::new()),
+        Balance::Random => Box::new(Random {}),
+        Balance::LeastLoadedTime => Box::new(LeastLoadedTime {}),
+        Balance::UriHash => {
+            let mut ring: HashRing<usize> = HashRing::new();
+            for backend_id in 0..backends_len {
+                ring.add(backend_id)
+            }
+            Box::new(UriHash::new(ring))
+        }
+        Balance::Frist => Box::new(Frist),
+    }
+}
 fn populate_backends(
     mut file_backend_configs: HashMap<String, FileBackendConfig>,
 ) -> anyhow::Result<Vec<ConfigBackend>> {
