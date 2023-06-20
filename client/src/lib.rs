@@ -1,6 +1,5 @@
 mod backends;
 mod balance;
-pub mod command;
 mod config;
 mod connector;
 mod metric;

@@ -21,7 +21,7 @@ use crate::backends::{Backend, FileBackendConfig};
 use crate::balance::{
     Balance, Frist, LeastLoadedTime, LoadBalancingAlgorithm, Random, RoundRobin, UriHash,
 };
-use crate::metric::{Metric, PeerInfo};
+use crate::metric::{Metric, PeerBackendRule, PeerInfo};
 use crate::Cmd;
 
 /// Config Toml
@@ -30,7 +30,7 @@ struct FileConfig {
     listen_address: String,
     log_level: String,
     balance: Balance,
-    host_modify: Option<PathBuf>,
+    host_rule: Option<PathBuf>,
     /// listen address for metric service
     metric_address: String,
     backends: HashMap<String, FileBackendConfig>,
@@ -46,7 +46,7 @@ pub(crate) struct Config {
     pub(crate) balance: Box<dyn LoadBalancingAlgorithm<ConfigBackend> + Send + Sync + 'static>,
     pub(crate) backends: Vec<ConfigBackend>,
 
-    host_modifier: Option<HostModifier>,
+    host_rule: Option<HostRuler>,
 
     pub(crate) non_connect_method_client: Client<ProxyConnector<HttpConnector>>,
 }
@@ -57,26 +57,37 @@ pub(crate) struct ConfigBackend {
     pub(crate) metric: Arc<Metric>,
 }
 
-// modifier
 #[derive(Debug, Deserialize)]
-struct HostModifier(BTreeMap<String, HostModifySection>);
+struct HostRuler(BTreeMap<String, HostRuleSection>);
 
-#[derive(Debug, Deserialize)]
-struct HostModifySection {
-    rewrite: Option<String>,
-    backend: Option<String>,
+#[derive(Debug, Deserialize, Clone)]
+pub(crate) struct HostRuleSection {
+    pub(crate) rewrite: Option<String>,
+    pub(crate) backend: Option<String>,
+    #[serde(default = "default_is_not_direct")]
+    pub(crate) direct: bool,
 }
 
-impl TomlFileConfig for HostModifier {}
+fn default_is_not_direct() -> bool {
+    false
+}
 
-impl HostModifier {
+#[derive(Debug)]
+pub(crate) enum HostRules {
+    Unknown,
+    NoRule,
+    GotRule(HostRuleSection),
+}
+
+impl TomlFileConfig for HostRuler {}
+
+impl HostRuler {
     fn new(host_file: impl std::io::Read) -> anyhow::Result<Option<Self>> {
-        let mut this =
-            Self::load_from_read(host_file).context("Failed to parse host modify toml")?;
+        let mut this = Self::load_from_read(host_file).context("Failed to parse host rule toml")?;
 
         let mut map = BTreeMap::new();
         for (sec_name, sec) in this.0 {
-            if sec.rewrite.is_none() && sec.backend.is_none() {
+            if sec.rewrite.is_none() && sec.backend.is_none() && !sec.direct {
                 continue;
             }
             map.insert(sec_name, sec);
@@ -89,48 +100,21 @@ impl HostModifier {
         Ok(Some(this))
     }
 
-    fn rewrite(&self, req_host: &str) -> Option<&str> {
-        if let Some(&HostModifySection {
-            rewrite: Some(ref r),
-            backend: _,
-        }) = self.0.get(req_host)
-        {
-            return Some(r);
+    fn find_rule(&self, peer: &mut PeerInfo) {
+        if matches!(peer.get_rule(), HostRules::NoRule) {
+            return;
         }
-        None
-    }
 
-    fn route(&self, req_host: &str) -> Option<&str> {
-        if let Some(&HostModifySection {
-            rewrite: _,
-            backend: Some(ref r),
-        }) = self.0.get(req_host)
-        {
-            return Some(r);
-        }
-        None
-    }
-
-    fn choose_backend(
-        &self,
-        peer: &PeerInfo,
-        backends: std::slice::Iter<'_, ConfigBackend>,
-    ) -> AvailableBackend {
-        if let Some(spec_backend_name) = self.route(peer.get_hostname()) {
-            for b in backends {
-                if b.metric.backend_name == spec_backend_name {
-                    return AvailableBackend::GotBackend(b.backend.clone());
-                }
-            }
-            // not found
-            return AvailableBackend::Block;
-        }
-        // ignore
-        AvailableBackend::NoBackend
+        let rule = self.0.get(peer.get_hostname());
+        peer.set_rule(match rule {
+            Some(rule) => HostRules::GotRule(rule.clone()),
+            None => HostRules::NoRule,
+        })
     }
 }
 
 pub(crate) enum AvailableBackend {
+    Direct,
     Block,
     NoBackend,
     GotBackend(Arc<RwLock<Backend>>),
@@ -165,11 +149,11 @@ impl Config {
         let non_connect_method_client =
             hyper::client::Client::builder().build::<_, hyper::Body>(proxy);
 
-        let host_modifier = if let Some(host_modifier) = file_config.host_modify {
-            let host_modifier =
-                std::fs::File::open(host_modifier).context("Failed to open host rewrite file")?;
+        let host_ruler = if let Some(host_ruler) = file_config.host_rule {
+            let host_ruler =
+                std::fs::File::open(host_ruler).context("Failed to open host rewrite file")?;
 
-            HostModifier::new(host_modifier).context("Failed to parse host rewrite config")?
+            HostRuler::new(host_ruler).context("Failed to parse host rewrite config")?
         } else {
             None
         };
@@ -180,7 +164,7 @@ impl Config {
             balance: Box::new(Frist),
             metric_address,
             log_level,
-            host_modifier,
+            host_rule: host_ruler,
             non_connect_method_client,
         };
 
@@ -236,25 +220,30 @@ impl Config {
             .await
     }
 
-    /// - if `config` has `host_modifier`, use it to find the corresponding backend:
+    /// - if `config` has `host_ruler`, use it to find the corresponding backend:
     ///   - If not found, return None
     ///   - If found, return the backend if backend's status is normal
-    /// - If `config` does not have `host_modifier`, use load balancing algorithm.
+    /// - If `config` does not have `host_ruler`, use load balancing algorithm.
     pub(crate) async fn next_available_backend(&self, peer: &PeerInfo) -> AvailableBackend {
-        if let Some(ref host_modifier) = self.host_modifier {
-            match host_modifier.choose_backend(peer, self.backends.iter()) {
-                AvailableBackend::NoBackend => {}
-                AvailableBackend::GotBackend(b) => {
-                    if b.read().await.get_status() == BackendStatus::Normal {
-                        return AvailableBackend::GotBackend(b.clone());
-                    } else {
-                        return AvailableBackend::Block;
+        match peer.get_backend_name_by_rule() {
+            PeerBackendRule::NoRule => { /* ignore */ }
+            PeerBackendRule::GotBackend(spec_backend_name) => {
+                for config_backend in self.backends.iter() {
+                    if config_backend.metric.backend_name == spec_backend_name {
+                        if config_backend.backend.read().await.get_status() == BackendStatus::Normal
+                        {
+                            return AvailableBackend::GotBackend(config_backend.backend.clone());
+                        } else {
+                            return AvailableBackend::Block;
+                        }
                     }
                 }
-                AvailableBackend::Block => {
-                    return AvailableBackend::Block;
-                }
-            };
+                // not found
+                return AvailableBackend::Block;
+            }
+            PeerBackendRule::Direct => {
+                return AvailableBackend::Direct;
+            }
         };
 
         let backends = self.available_backends().await;
@@ -263,7 +252,7 @@ impl Config {
         }
 
         if backends.len() == 1 {
-            AvailableBackend::GotBackend(backends.get(0).unwrap().backend.clone())
+            AvailableBackend::GotBackend(backends.first().unwrap().backend.clone())
         } else {
             match self.balance.next_available_backend(&backends, peer) {
                 Some(config_backend) => AvailableBackend::GotBackend(config_backend.backend),
@@ -272,25 +261,20 @@ impl Config {
         }
     }
 
-    pub(crate) fn rewrite_host(&self, peer_info: &PeerInfo) -> String {
-        if let Some(ref h) = self.host_modifier {
-            if let Some(host) = h.rewrite(peer_info.get_hostname()) {
-                info!("host is rewritten: {}", host);
-
-                let mut host = host.to_owned();
-                host.push(':');
-                host.push_str(&peer_info.get_port_str());
-                return host;
-            }
+    pub(crate) fn find_rule_for_peer(&self, peer: &mut PeerInfo) {
+        if let Some(ref h) = self.host_rule {
+            h.find_rule(peer)
         }
-
-        peer_info.get_valid_host()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{io::Cursor, path::PathBuf};
+    use std::{
+        io::Cursor,
+        net::{IpAddr, Ipv4Addr},
+        path::PathBuf,
+    };
 
     use super::*;
     use tokio::{net::TcpListener, sync::Mutex};
@@ -366,7 +350,9 @@ mod tests {
 
         let res = config.available_backends().await;
         assert_eq!(res.len(), 1, "incorrect config available backends len");
-        let next_backend = config.next_available_backend(&empty_host_peer_info()).await;
+        let next_backend = config
+            .next_available_backend(&mut empty_host_peer_info())
+            .await;
         let next_backend = match next_backend {
             AvailableBackend::GotBackend(b) => b,
             _ => unreachable!("Should not be other value"),
@@ -382,7 +368,9 @@ mod tests {
 
         let res = config.available_backends().await;
         assert_eq!(res.len(), 0, "should be no backend");
-        let next_backend = config.next_available_backend(&empty_host_peer_info()).await;
+        let next_backend = config
+            .next_available_backend(&mut empty_host_peer_info())
+            .await;
 
         assert!(
             matches!(next_backend, AvailableBackend::NoBackend),
@@ -444,30 +432,13 @@ mod tests {
         assert_eq!(max_retries, *retries, "max_retries is wrong");
     }
 
-    #[tokio::test]
-    async fn test_config_host_rewrite() {
-        let config = Config::new(Cmd {
-            listen_address: Some("8080".to_owned()),
-            config: PathBuf::from("assets/testconfig/host_rewrite_client.toml"),
-        })
-        .unwrap();
-
-        let peer = PeerInfo::new(
-            "hello.com:8080".to_string(),
-            "127.0.0.1:14000".parse().unwrap(),
-        );
-
-        let new_host = config.rewrite_host(&peer);
-        assert_eq!(new_host, "127.0.0.1:8080")
-    }
-
     fn build_config_reader(s: &str) -> std::io::BufReader<Cursor<&str>> {
         std::io::BufReader::new(Cursor::new(s))
     }
 
     #[test]
-    fn test_new_host_modifier() {
-        let host_modifier_file = r#"
+    fn test_new_host_ruler() {
+        let host_ruler_file = r#"
 ["example.com"]
 rewrite = "hello.com"
 backend = "local1"
@@ -478,89 +449,104 @@ rewrite = "127.0.0.1"
 [world]
 
         "#;
-        let host_modify_file = build_config_reader(host_modifier_file);
-        let host_modifier = HostModifier::new(host_modify_file).unwrap();
-        assert!(host_modifier.is_some(), "parse normal config");
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file).unwrap();
+        assert!(host_ruler.is_some(), "parse normal config");
 
-        let host_modify_file = r#"
+        let host_ruler_file = r#"
 
         "#;
-        let host_modify_file = build_config_reader(host_modify_file);
-        let host_modifier = HostModifier::new(host_modify_file).unwrap();
-        assert!(host_modifier.is_none(), "parse empty config");
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file).unwrap();
+        assert!(host_ruler.is_none(), "parse empty config");
 
-        let host_modify_file = r#"
+        let host_ruler_file = r#"
 [hello]
 
 [world]
         "#;
-        let host_modify_file = build_config_reader(host_modify_file);
-        let host_modifier = HostModifier::new(host_modify_file).unwrap();
-        assert!(host_modifier.is_none(), "parse empty sections config");
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file).unwrap();
+        assert!(host_ruler.is_none(), "parse empty sections config");
 
-        let host_modify_file = r#"
+        let host_ruler_file = r#"
+[hello]
+direct = true
+
+[world]
+        "#;
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file).unwrap();
+        assert!(host_ruler.is_some(), "parse direct sections config");
+
+        let host_ruler_file = r#"
 aaaaaaaaaaaaaaaaa
         "#;
-        let host_modify_file = build_config_reader(host_modify_file);
-        let host_modifier = HostModifier::new(host_modify_file);
-        assert!(host_modifier.is_err(), "parse invalid config");
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file);
+        assert!(host_ruler.is_err(), "parse invalid config");
 
-        let host_modify_file = r#"
+        let host_ruler_file = r#"
 [hello]
 [hello]
         "#;
-        let host_modify_file = build_config_reader(host_modify_file);
-        let host_modifier = HostModifier::new(host_modify_file);
-        assert!(host_modifier.is_err(), "parse dup sections config")
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file);
+        assert!(host_ruler.is_err(), "parse dup sections config")
     }
 
     #[test]
-    fn test_host_modifier_rewrite() {
-        let host_modify_file = r#"
+    fn test_new_host_ruler_find_rule() {
+        let eg_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let host_ruler_file = r#"
 ["example.com"]
 rewrite = "hello.com"
 backend = "local1"
 
 [hello]
 rewrite = "127.0.0.1"
+
+[world]
+
+[fedora.local10]
+direct = true
+
+[fedora.local101]
+direct = false
+
         "#;
-        let host_modify_file = build_config_reader(host_modify_file);
-        let host_modifier = HostModifier::new(host_modify_file).unwrap();
-        assert!(host_modifier.is_some(), "parse normal config");
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file).unwrap();
 
-        let host_modifier = host_modifier.unwrap();
+        let host_ruler = host_ruler.unwrap();
 
-        let res = host_modifier.rewrite("example.com");
-        assert!(res.is_some(), "example.com should be in the rule");
-        let res = res.unwrap();
-        assert_eq!(res, "hello.com", "rewrite example.com into hello.com");
+        let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
+        assert!(matches!(peer.get_rule(), HostRules::Unknown));
+        host_ruler.find_rule(&mut peer);
+        assert!(matches!(
+            peer.get_rule(),
+            HostRules::GotRule(HostRuleSection {
+                rewrite: Some(_),
+                backend: Some(_),
+                direct: _,
+            })
+        ));
 
-        let res = host_modifier.rewrite("google.com");
-        assert!(res.is_none(), "google.com should not be in the rule");
-    }
+        let mut peer = PeerInfo::new("hello:8080".to_owned(), eg_addr);
+        assert!(matches!(peer.get_rule(), HostRules::Unknown));
+        host_ruler.find_rule(&mut peer);
+        assert!(matches!(
+            peer.get_rule(),
+            HostRules::GotRule(HostRuleSection {
+                rewrite: Some(_),
+                backend: None,
+                direct: _,
+            })
+        ));
 
-    #[test]
-    fn test_host_modifier_route() {
-        let host_modify_file = r#"
-["example.com"]
-rewrite = "hello.com"
-backend = "local1"
-
-[hello]
-rewrite = "127.0.0.1"
-        "#;
-        let host_modify_file = build_config_reader(host_modify_file);
-        let host_modifier = HostModifier::new(host_modify_file).unwrap();
-        assert!(host_modifier.is_some(), "parse normal config");
-
-        let host_modifier = host_modifier.unwrap();
-
-        let res = host_modifier.route("example.com");
-        assert!(res.is_some(), "example.com should be in the rule");
-        let res = res.unwrap();
-        assert_eq!(res, "local1", "route example.com to local1");
-
-        let res = host_modifier.route("google.com");
-        assert!(res.is_none(), "google.com should not be in the rule");
+        let mut peer = PeerInfo::new("google.com:8080".to_owned(), eg_addr);
+        assert!(matches!(peer.get_rule(), HostRules::Unknown));
+        host_ruler.find_rule(&mut peer);
+        assert!(matches!(peer.get_rule(), HostRules::NoRule));
     }
 }

@@ -101,7 +101,7 @@ impl UriHash {
 
 impl<T: Clone> LoadBalancingAlgorithm<T> for UriHash {
     fn next_available_backend(&self, items: &[T], info: &PeerInfo) -> Option<T> {
-        let item_id = self.ring.get(&info);
+        let item_id = self.ring.get(&info.get_hostname());
 
         // get backend by id
         if let Some(backend_id) = item_id {

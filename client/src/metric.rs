@@ -8,7 +8,11 @@ use octoproxy_lib::metric::{
 use parking_lot::Mutex;
 use std::{borrow::Cow, collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
-use crate::{backends::Backend, config::Config, proxy::retry_forever};
+use crate::{
+    backends::Backend,
+    config::{Config, HostRuleSection, HostRules},
+    proxy::retry_forever,
+};
 use axum::{
     extract::{ws::Message, State, WebSocketUpgrade},
     response::IntoResponse,
@@ -170,11 +174,12 @@ fn get_all_backends(config: &Arc<Config>) -> Vec<BackendMetric<'_>> {
         .collect::<Vec<_>>()
 }
 
-#[derive(Debug, Hash)]
+#[derive(Debug)]
 pub(crate) struct PeerInfo {
     host: String,
     addr: SocketAddr,
     port_index: HostPortIndex,
+    rule: HostRules,
 }
 
 impl PeerInfo {
@@ -185,6 +190,7 @@ impl PeerInfo {
             host,
             addr,
             port_index,
+            rule: HostRules::Unknown,
         }
     }
 
@@ -223,6 +229,58 @@ impl PeerInfo {
     pub(crate) fn get_addr(&self) -> SocketAddr {
         self.addr
     }
+
+    pub(crate) fn set_rule(&mut self, rule: HostRules) {
+        self.rule = rule
+    }
+
+    pub(crate) fn get_rule(&self) -> &HostRules {
+        &self.rule
+    }
+
+    pub(crate) fn get_host_by_rule(&self) -> String {
+        if let HostRules::GotRule(HostRuleSection {
+            rewrite: Some(ref host),
+            backend: _,
+            direct: _,
+        }) = self.get_rule()
+        {
+            info!("host is rewritten: {}", host);
+
+            let mut host = host.to_owned();
+            host.push(':');
+            host.push_str(&self.get_port_str());
+            host
+        } else {
+            self.get_valid_host()
+        }
+    }
+
+    pub(crate) fn get_backend_name_by_rule(&self) -> PeerBackendRule {
+        match self.get_rule() {
+            HostRules::Unknown | HostRules::NoRule => PeerBackendRule::NoRule,
+            HostRules::GotRule(HostRuleSection {
+                rewrite: _,
+                backend,
+                direct,
+            }) => {
+                if *direct {
+                    PeerBackendRule::Direct
+                } else {
+                    match backend {
+                        Some(backend_name) => PeerBackendRule::GotBackend(backend_name),
+                        None => PeerBackendRule::NoRule,
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub(crate) enum PeerBackendRule<'a> {
+    NoRule,
+    Direct,
+    GotBackend(&'a str),
 }
 
 #[derive(Debug, Hash)]
@@ -541,5 +599,71 @@ mod tests {
         assert_eq!(p.get_hostname(), "example.com");
         assert_eq!(p.get_valid_host(), "example.com:80");
         assert_eq!(p.get_port_str(), "80");
+    }
+
+    #[test]
+    fn test_new_peer_info_rule() {
+        let eg_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+
+        let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
+        peer.set_rule(HostRules::NoRule);
+        assert_eq!(peer.get_host_by_rule(), "example.com:8080");
+
+        peer.set_rule(HostRules::GotRule(HostRuleSection {
+            rewrite: Some("hello.com".to_owned()),
+            backend: None,
+            direct: false,
+        }));
+        assert_eq!(peer.get_host_by_rule(), "hello.com:8080", "rewrittend rule");
+
+        let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
+        peer.set_rule(HostRules::GotRule(HostRuleSection {
+            rewrite: None,
+            backend: Some("local1".to_owned()),
+            direct: false,
+        }));
+        assert!(
+            matches!(
+                peer.get_backend_name_by_rule(),
+                PeerBackendRule::GotBackend("local1"),
+            ),
+            "routed backend rule"
+        );
+
+        let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
+        peer.set_rule(HostRules::GotRule(HostRuleSection {
+            rewrite: None,
+            backend: None,
+            direct: false,
+        }));
+
+        assert!(
+            matches!(peer.get_backend_name_by_rule(), PeerBackendRule::NoRule,),
+            "no rules"
+        );
+
+        let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
+        peer.set_rule(HostRules::GotRule(HostRuleSection {
+            rewrite: None,
+            backend: None,
+            direct: true,
+        }));
+
+        assert!(
+            matches!(peer.get_backend_name_by_rule(), PeerBackendRule::Direct,),
+            "rules for direct"
+        );
+
+        let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
+        peer.set_rule(HostRules::GotRule(HostRuleSection {
+            rewrite: None,
+            backend: Some("local1".to_owned()),
+            direct: true,
+        }));
+
+        assert!(
+            matches!(peer.get_backend_name_by_rule(), PeerBackendRule::Direct,),
+            "direct ignores backend"
+        );
     }
 }

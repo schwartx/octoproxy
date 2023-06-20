@@ -3,7 +3,7 @@ metric_address = "127.0.0.1:8403"
 log_level = "info"
 # random, round_robin, least_loaded_time,uri_hash, frist
 balance = "frist"
-host_modify = "./assets/host_rewrite.toml"
+host_rule = "./assets/host_rule.toml"
 
 # balance = "roundrobin"
 
