@@ -1,9 +1,13 @@
 use anyhow::bail;
+use bytes::{BufMut, BytesMut};
 use futures::{SinkExt, StreamExt};
 
 use left_right::{Absorb, ReadHandleFactory, WriteHandle};
-use octoproxy_lib::metric::{
-    BackendMetric, BackendProtocol, BackendStatus, MetricApiReq, MetricApiResp, MetricData,
+use octoproxy_lib::{
+    metric::{
+        BackendMetric, BackendProtocol, BackendStatus, MetricApiReq, MetricApiResp, MetricData,
+    },
+    proxy::ConnectHeadBuf,
 };
 use parking_lot::Mutex;
 use std::{borrow::Cow, collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
@@ -204,14 +208,15 @@ impl PeerInfo {
     }
 
     /// this would fill up port number if original host not have
-    pub(crate) fn get_valid_host(&self) -> String {
+    pub(crate) fn get_valid_host(&self) -> ConnectHeadBuf {
         match self.port_index {
-            HostPortIndex::NonDafault(_) => self.host.to_owned(),
+            HostPortIndex::NonDafault(_) => ConnectHeadBuf::from(self.host.as_ref()),
             HostPortIndex::Default => {
-                let mut host = self.host.to_owned();
-                host.push(':');
-                host.push_str(HostPortIndex::DEFAULT_PORT);
-                host
+                let mut buf = BytesMut::new();
+                buf.put_slice(self.host.as_bytes());
+                buf.put_u8(b':');
+                buf.put_slice(self.get_port_str().as_bytes());
+                ConnectHeadBuf::from(buf.freeze())
             }
         }
     }
@@ -235,7 +240,7 @@ impl PeerInfo {
         &self.rule
     }
 
-    pub(crate) fn get_host_by_rule(&self) -> String {
+    pub(crate) fn get_host_by_rule(&self) -> ConnectHeadBuf {
         if let HostRules::GotRule(HostRuleSection {
             rewrite: Some(ref host),
             backend: _,
@@ -244,10 +249,11 @@ impl PeerInfo {
         {
             info!("host is rewritten: {}", host);
 
-            let mut host = host.to_owned();
-            host.push(':');
-            host.push_str(self.get_port_str());
-            host
+            let mut buf = BytesMut::new();
+            buf.put_slice(host.as_bytes());
+            buf.put_u8(b':');
+            buf.put_slice(self.get_port_str().as_bytes());
+            ConnectHeadBuf::from(buf.freeze())
         } else {
             self.get_valid_host()
         }
@@ -589,12 +595,12 @@ mod tests {
 
         let p = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
         assert_eq!(p.get_hostname(), "example.com");
-        assert_eq!(p.get_valid_host(), "example.com:8080");
+        assert_eq!(p.get_valid_host().as_str(), "example.com:8080");
         assert_eq!(p.get_port_str(), "8080");
 
         let p = PeerInfo::new("example.com".to_owned(), eg_addr);
         assert_eq!(p.get_hostname(), "example.com");
-        assert_eq!(p.get_valid_host(), "example.com:80");
+        assert_eq!(p.get_valid_host().as_str(), "example.com:80");
         assert_eq!(p.get_port_str(), "80");
     }
 
@@ -604,14 +610,18 @@ mod tests {
 
         let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
         peer.set_rule(HostRules::NoRule);
-        assert_eq!(peer.get_host_by_rule(), "example.com:8080");
+        assert_eq!(peer.get_host_by_rule().as_str(), "example.com:8080");
 
         peer.set_rule(HostRules::GotRule(HostRuleSection {
             rewrite: Some("hello.com".to_owned()),
             backend: None,
             direct: false,
         }));
-        assert_eq!(peer.get_host_by_rule(), "hello.com:8080", "rewrittend rule");
+        assert_eq!(
+            peer.get_host_by_rule().as_str(),
+            "hello.com:8080",
+            "rewrittend rule"
+        );
 
         let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
         peer.set_rule(HostRules::GotRule(HostRuleSection {

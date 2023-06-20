@@ -375,7 +375,10 @@ impl Backend {
         }
     }
 
-    pub(crate) async fn try_connect(&self, host: Option<String>) -> anyhow::Result<BidiStream> {
+    pub(crate) async fn try_connect(
+        &self,
+        host: Option<ConnectHeadBuf>,
+    ) -> anyhow::Result<BidiStream> {
         debug!("try connecting backend id: {}", self.get_backend_name());
 
         let client = self.client.clone();
@@ -384,7 +387,7 @@ impl Backend {
         let fut = async move {
             let stream = client
                 // TODO: host String?
-                .new_stream_fut(host.map(|x| ConnectHeadBuf::from(x.as_str())))
+                .new_stream_fut(host)
                 .await?
                 .await?;
             anyhow::Ok(stream)

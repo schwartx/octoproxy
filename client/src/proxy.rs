@@ -180,7 +180,7 @@ async fn handle_connection(
 
 async fn direct_connection(peer: PeerInfo, mut inbound: Upgraded) -> anyhow::Result<()> {
     let host = peer.get_host_by_rule();
-    let mut outbound = tokio::net::TcpStream::connect(host).await?;
+    let mut outbound = tokio::net::TcpStream::connect(host.as_str()).await?;
 
     tokio::io::copy_bidirectional(&mut inbound, &mut outbound).await?;
     Ok(())

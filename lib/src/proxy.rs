@@ -1,4 +1,7 @@
-use std::{fmt::Display, pin::Pin};
+use std::{
+    fmt::{Debug, Display},
+    pin::Pin,
+};
 
 use bytes::{BufMut, Bytes, BytesMut};
 use tokio::{
@@ -27,6 +30,12 @@ where
 #[derive(Clone)]
 pub struct ConnectHeadBuf(Bytes);
 
+impl ConnectHeadBuf {
+    pub fn as_str(&self) -> &str {
+        std::str::from_utf8(&self.0.as_ref()[std::mem::size_of::<u16>()..]).unwrap()
+    }
+}
+
 impl AsRef<[u8]> for ConnectHeadBuf {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
@@ -39,6 +48,15 @@ impl From<&str> for ConnectHeadBuf {
         buf.put_u16(host.len() as u16);
         buf.put(host.as_bytes());
         Self(buf.freeze())
+    }
+}
+
+impl From<Bytes> for ConnectHeadBuf {
+    fn from(host_buf: Bytes) -> Self {
+        let mut buf = BytesMut::new();
+        buf.put_u16(host_buf.len() as u16);
+        buf.extend(host_buf);
+        ConnectHeadBuf(buf.freeze())
     }
 }
 
