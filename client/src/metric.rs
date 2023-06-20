@@ -257,19 +257,23 @@ impl PeerInfo {
     }
 
     pub(crate) fn get_backend_name_by_rule(&self) -> PeerBackendRule {
-        if let HostRules::GotRule(HostRuleSection {
-            rewrite: _,
-            backend: Some(ref backend_name),
-            direct,
-        }) = self.get_rule()
-        {
-            // TODO: should I need this ?
-            if *direct {
-                return PeerBackendRule::Direct;
+        match self.get_rule() {
+            HostRules::Unknown | HostRules::NoRule => PeerBackendRule::NoRule,
+            HostRules::GotRule(HostRuleSection {
+                rewrite: _,
+                backend,
+                direct,
+            }) => {
+                if *direct {
+                    PeerBackendRule::Direct
+                } else {
+                    match backend {
+                        Some(backend_name) => PeerBackendRule::GotBackend(backend_name),
+                        None => PeerBackendRule::NoRule,
+                    }
+                }
             }
-            return PeerBackendRule::GotBackend(&backend_name);
         }
-        PeerBackendRule::NoRule
     }
 }
 
@@ -646,8 +650,8 @@ mod tests {
         }));
 
         assert!(
-            matches!(peer.get_backend_name_by_rule(), PeerBackendRule::NoRule,),
-            "no rules for direct"
+            matches!(peer.get_backend_name_by_rule(), PeerBackendRule::Direct,),
+            "rules for direct"
         );
 
         let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
@@ -658,7 +662,7 @@ mod tests {
         }));
 
         assert!(
-            matches!(peer.get_backend_name_by_rule(), PeerBackendRule::NoRule,),
+            matches!(peer.get_backend_name_by_rule(), PeerBackendRule::Direct,),
             "direct ignores backend"
         );
     }

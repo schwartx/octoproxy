@@ -4,3 +4,7 @@ rewrite = "127.0.0.1"
 ["hello.com"]
 backend = "local2"
 rewrite = "127.0.0.1"
+
+["fedora.local101"]
+rewrite = "127.0.0.1"
+direct = true
