@@ -1,5 +1,4 @@
 use anyhow::Context;
-use futures::stream::{self, StreamExt};
 use hashring::HashRing;
 use hyper::client::HttpConnector;
 use hyper::Client;
@@ -44,7 +43,7 @@ pub(crate) struct Config {
     pub(crate) metric_address: SocketAddr,
     pub(crate) log_level: LevelFilter,
     pub(crate) balance: Box<dyn LoadBalancingAlgorithm<ConfigBackend> + Send + Sync + 'static>,
-    pub(crate) backends: Vec<ConfigBackend>,
+    pub(crate) backends: Arc<[ConfigBackend]>,
 
     host_rule: Option<HostRuler>,
 
@@ -158,66 +157,32 @@ impl Config {
             None
         };
 
-        let mut config = Self {
+        let balance = populate_load_balance(file_config.balance, file_config.backends.len());
+        let backends =
+            populate_backends(file_config.backends).context("Could not setup backends")?;
+
+        Ok(Self {
             listen_address,
-            backends: Vec::new(),
-            balance: Box::new(Frist),
+            balance,
+            backends,
             metric_address,
             log_level,
             host_rule: host_ruler,
             non_connect_method_client,
-        };
-
-        config
-            .populate_backends(file_config.backends)
-            .context("Could not setup backends")?;
-
-        config.balance = match file_config.balance {
-            Balance::RoundRobin => Box::new(RoundRobin::new()),
-            Balance::Random => Box::new(Random {}),
-            Balance::LeastLoadedTime => Box::new(LeastLoadedTime {}),
-            Balance::UriHash => {
-                let mut ring: HashRing<usize> = HashRing::new();
-                for backend_id in 0..config.backends.len() {
-                    ring.add(backend_id)
-                }
-                Box::new(UriHash::new(ring))
-            }
-            Balance::Frist => Box::new(Frist),
-        };
-
-        info!("load balance algorithm: {:?}", file_config.balance);
-
-        Ok(config)
+        })
     }
 
-    fn populate_backends(
-        &mut self,
-        mut file_backend_configs: HashMap<String, FileBackendConfig>,
-    ) -> anyhow::Result<()> {
-        for (file_backend_name, file_backend_config) in file_backend_configs.drain() {
-            let backend = Backend::new(file_backend_name, file_backend_config)
-                .context("Fail to initialize backend")?;
-
-            self.backends.push(ConfigBackend {
-                metric: Arc::new(backend.metric.clone()),
-                backend: Arc::new(RwLock::new(backend)),
-            });
-        }
-        Ok(())
-    }
-
-    async fn available_backends(&self) -> Vec<ConfigBackend> {
-        stream::iter(self.backends.iter())
-            .filter_map(|backend| async move {
-                if backend.backend.read().await.get_status() == BackendStatus::Normal {
-                    Some(backend.clone())
+    fn available_backends(&self) -> Vec<ConfigBackend> {
+        self.backends
+            .iter()
+            .filter_map(|config_backend| {
+                if config_backend.metric.get_status() == BackendStatus::Normal {
+                    Some(config_backend.clone())
                 } else {
                     None
                 }
             })
             .collect()
-            .await
     }
 
     /// - if `config` has `host_ruler`, use it to find the corresponding backend:
@@ -246,7 +211,7 @@ impl Config {
             }
         };
 
-        let backends = self.available_backends().await;
+        let backends = self.available_backends();
         if backends.is_empty() {
             return AvailableBackend::NoBackend;
         }
@@ -266,6 +231,41 @@ impl Config {
             h.find_rule(peer)
         }
     }
+}
+
+fn populate_load_balance(
+    balance: Balance,
+    backends_len: usize,
+) -> Box<dyn LoadBalancingAlgorithm<ConfigBackend> + Send + Sync + 'static> {
+    info!("load balance algorithm: {:?}", balance);
+    match balance {
+        Balance::RoundRobin => Box::new(RoundRobin::new()),
+        Balance::Random => Box::new(Random {}),
+        Balance::LeastLoadedTime => Box::new(LeastLoadedTime {}),
+        Balance::UriHash => {
+            let mut ring: HashRing<usize> = HashRing::new();
+            for backend_id in 0..backends_len {
+                ring.add(backend_id)
+            }
+            Box::new(UriHash::new(ring))
+        }
+        Balance::Frist => Box::new(Frist),
+    }
+}
+fn populate_backends(
+    mut file_backend_configs: HashMap<String, FileBackendConfig>,
+) -> anyhow::Result<Arc<[ConfigBackend]>> {
+    let mut backends = Vec::new();
+    for (file_backend_name, file_backend_config) in file_backend_configs.drain() {
+        let backend = Backend::new(file_backend_name, file_backend_config)
+            .context("Fail to initialize backend")?;
+
+        backends.push(ConfigBackend {
+            metric: Arc::new(backend.metric.clone()),
+            backend: Arc::new(RwLock::new(backend)),
+        });
+    }
+    Ok(Arc::from(backends.as_slice()))
 }
 
 #[cfg(test)]
@@ -321,7 +321,7 @@ mod tests {
 
         let config_backend = config.backends.first().unwrap();
         let first_backend = config_backend.backend.clone();
-        first_backend.write().await.backend_name = "first_backend".to_owned();
+        first_backend.write().await.metric.backend_name = "first_backend".to_owned();
 
         let file_backend: FileBackendConfig = toml::from_str(&format!(
             "
@@ -346,9 +346,10 @@ mod tests {
             backend: Arc::new(RwLock::new(second_backend)),
         };
 
-        config.backends.push(second_config_backend);
+        let first_config_backend = config.backends.first().unwrap().clone();
+        config.backends = Arc::from([first_config_backend, second_config_backend]);
 
-        let res = config.available_backends().await;
+        let res = config.available_backends();
         assert_eq!(res.len(), 1, "incorrect config available backends len");
         let next_backend = config
             .next_available_backend(&mut empty_host_peer_info())
@@ -358,7 +359,7 @@ mod tests {
             _ => unreachable!("Should not be other value"),
         };
         assert_eq!(
-            next_backend.read().await.backend_name,
+            next_backend.read().await.get_backend_name(),
             "first_backend".to_owned(),
             "should be a backend here"
         );
@@ -366,7 +367,7 @@ mod tests {
         // make the first backend down
         first_backend.read().await.set_status(BackendStatus::Closed);
 
-        let res = config.available_backends().await;
+        let res = config.available_backends();
         assert_eq!(res.len(), 0, "should be no backend");
         let next_backend = config
             .next_available_backend(&mut empty_host_peer_info())
