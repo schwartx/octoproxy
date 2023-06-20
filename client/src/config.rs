@@ -65,7 +65,6 @@ pub(crate) struct HostRuleSection {
     pub(crate) rewrite: Option<String>,
     pub(crate) backend: Option<String>,
     #[serde(default = "default_is_not_direct")]
-    #[allow(unused)]
     pub(crate) direct: bool,
 }
 
@@ -88,7 +87,7 @@ impl HostRuler {
 
         let mut map = BTreeMap::new();
         for (sec_name, sec) in this.0 {
-            if sec.rewrite.is_none() && sec.backend.is_none() {
+            if sec.rewrite.is_none() && sec.backend.is_none() && !sec.direct {
                 continue;
             }
             map.insert(sec_name, sec);
@@ -463,6 +462,16 @@ rewrite = "127.0.0.1"
         assert!(host_ruler.is_none(), "parse empty sections config");
 
         let host_ruler_file = r#"
+[hello]
+direct = true
+
+[world]
+        "#;
+        let host_ruler_file = build_config_reader(host_ruler_file);
+        let host_ruler = HostRuler::new(host_ruler_file).unwrap();
+        assert!(host_ruler.is_some(), "parse direct sections config");
+
+        let host_ruler_file = r#"
 aaaaaaaaaaaaaaaaa
         "#;
         let host_ruler_file = build_config_reader(host_ruler_file);
@@ -490,6 +499,12 @@ backend = "local1"
 rewrite = "127.0.0.1"
 
 [world]
+
+[fedora.local10]
+direct = true
+
+[fedora.local101]
+direct = false
 
         "#;
         let host_ruler_file = build_config_reader(host_ruler_file);

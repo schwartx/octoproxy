@@ -260,9 +260,13 @@ impl PeerInfo {
         if let HostRules::GotRule(HostRuleSection {
             rewrite: _,
             backend: Some(ref backend_name),
-            direct: _,
+            direct,
         }) = self.get_rule()
         {
+            // TODO: should I need this ?
+            if *direct {
+                return None;
+            }
             return Some(backend_name);
         }
         None
@@ -600,7 +604,7 @@ mod tests {
             backend: None,
             direct: false,
         }));
-        assert_eq!(peer.get_host_by_rule(), "hello.com:8080");
+        assert_eq!(peer.get_host_by_rule(), "hello.com:8080", "rewrittend rule");
 
         let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
         peer.set_rule(HostRules::GotRule(HostRuleSection {
@@ -608,6 +612,38 @@ mod tests {
             backend: Some("local1".to_owned()),
             direct: false,
         }));
-        assert_eq!(peer.get_backend_name_by_rule(), Some("local1"));
+        assert_eq!(
+            peer.get_backend_name_by_rule(),
+            Some("local1"),
+            "routed backend rule"
+        );
+
+        let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
+        peer.set_rule(HostRules::GotRule(HostRuleSection {
+            rewrite: None,
+            backend: None,
+            direct: false,
+        }));
+        assert_eq!(peer.get_backend_name_by_rule(), None, "no rules");
+
+        let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
+        peer.set_rule(HostRules::GotRule(HostRuleSection {
+            rewrite: None,
+            backend: None,
+            direct: true,
+        }));
+        assert_eq!(peer.get_backend_name_by_rule(), None, "no rules for direct");
+
+        let mut peer = PeerInfo::new("example.com:8080".to_owned(), eg_addr);
+        peer.set_rule(HostRules::GotRule(HostRuleSection {
+            rewrite: None,
+            backend: Some("local1".to_owned()),
+            direct: true,
+        }));
+        assert_eq!(
+            peer.get_backend_name_by_rule(),
+            None,
+            "direct ignores backend"
+        );
     }
 }
