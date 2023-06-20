@@ -254,7 +254,6 @@ fn parse_domain(address: &str) -> anyhow::Result<ServerName> {
 }
 
 pub(crate) struct Backend {
-    pub(crate) backend_name: String,
     pub(crate) retry_timeout: u64,
     pub(crate) max_retries: u32,
     pub(crate) metric: Metric,
@@ -291,7 +290,6 @@ impl Backend {
         let client = Arc::new(client);
         Ok(Self {
             retrying: AtomicBool::new(false),
-            backend_name,
             cancellation_token,
             client,
             metric,
@@ -353,7 +351,7 @@ impl Backend {
                     Ok(_) => {
                         // good connection
                         self.set_status(BackendStatus::Normal);
-                        debug!("backend: {} connection is back.", self.backend_name);
+                        debug!("backend: {} connection is back.", self.get_backend_name());
 
                         self.retrying.store(false, Ordering::Release);
                         // exit this function
@@ -363,7 +361,11 @@ impl Backend {
                         if self.get_status() != BackendStatus::Closed {
                             self.set_status(BackendStatus::Closed);
                         }
-                        debug!("backend: {} fail to connect: {}", self.backend_name, err);
+                        debug!(
+                            "backend: {} fail to connect: {}",
+                            self.get_backend_name(),
+                            err
+                        );
 
                         self.retrying.store(false, Ordering::Release);
                         ControlFlow::Continue(())
@@ -374,7 +376,7 @@ impl Backend {
     }
 
     pub(crate) async fn try_connect(&self, host: Option<String>) -> anyhow::Result<BidiStream> {
-        debug!("try connecting backend id: {}", self.backend_name);
+        debug!("try connecting backend id: {}", self.get_backend_name());
 
         let client = self.client.clone();
         let cancellation_token = self.cancellation_token.clone();
@@ -464,6 +466,10 @@ impl Backend {
 
     pub(crate) fn get_status(&self) -> BackendStatus {
         self.metric.get_status()
+    }
+
+    pub(crate) fn get_backend_name(&self) -> &str {
+        &self.metric.backend_name
     }
 
     pub(crate) fn cancel(&self) {

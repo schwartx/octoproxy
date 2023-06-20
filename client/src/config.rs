@@ -321,7 +321,7 @@ mod tests {
 
         let config_backend = config.backends.first().unwrap();
         let first_backend = config_backend.backend.clone();
-        first_backend.write().await.backend_name = "first_backend".to_owned();
+        first_backend.write().await.metric.backend_name = "first_backend".to_owned();
 
         let file_backend: FileBackendConfig = toml::from_str(&format!(
             "
@@ -359,7 +359,7 @@ mod tests {
             _ => unreachable!("Should not be other value"),
         };
         assert_eq!(
-            next_backend.read().await.backend_name,
+            next_backend.read().await.get_backend_name(),
             "first_backend".to_owned(),
             "should be a backend here"
         );
