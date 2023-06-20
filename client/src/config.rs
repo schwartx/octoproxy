@@ -44,7 +44,7 @@ pub(crate) struct Config {
     pub(crate) metric_address: SocketAddr,
     pub(crate) log_level: LevelFilter,
     pub(crate) balance: Box<dyn LoadBalancingAlgorithm<ConfigBackend> + Send + Sync + 'static>,
-    pub(crate) backends: Vec<ConfigBackend>,
+    pub(crate) backends: Arc<[ConfigBackend]>,
 
     host_rule: Option<HostRuler>,
 
@@ -255,7 +255,7 @@ fn populate_load_balance(
 }
 fn populate_backends(
     mut file_backend_configs: HashMap<String, FileBackendConfig>,
-) -> anyhow::Result<Vec<ConfigBackend>> {
+) -> anyhow::Result<Arc<[ConfigBackend]>> {
     let mut backends = Vec::new();
     for (file_backend_name, file_backend_config) in file_backend_configs.drain() {
         let backend = Backend::new(file_backend_name, file_backend_config)
@@ -266,7 +266,7 @@ fn populate_backends(
             backend: Arc::new(RwLock::new(backend)),
         });
     }
-    Ok(backends)
+    Ok(Arc::from(backends.as_slice()))
 }
 
 #[cfg(test)]
@@ -347,7 +347,8 @@ mod tests {
             backend: Arc::new(RwLock::new(second_backend)),
         };
 
-        config.backends.push(second_config_backend);
+        let first_config_backend = config.backends.first().unwrap().clone();
+        config.backends = Arc::from([first_config_backend, second_config_backend]);
 
         let res = config.available_backends().await;
         assert_eq!(res.len(), 1, "incorrect config available backends len");
