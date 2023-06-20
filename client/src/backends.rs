@@ -385,11 +385,7 @@ impl Backend {
         let cancellation_token = self.cancellation_token.clone();
 
         let fut = async move {
-            let stream = client
-                // TODO: host String?
-                .new_stream_fut(host)
-                .await?
-                .await?;
+            let stream = client.new_stream_fut(host).await?.await?;
             anyhow::Ok(stream)
         };
 
