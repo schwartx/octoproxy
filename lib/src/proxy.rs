@@ -1,6 +1,6 @@
 use std::{fmt::Display, pin::Pin};
 
-use bytes::{Bytes, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite},
     net::TcpStream,
@@ -16,12 +16,30 @@ where
     let mut buf = BytesMut::with_capacity(url_len as usize);
     inbound.read_buf(&mut buf).await?;
 
-    let url = std::str::from_utf8(&buf)?;
+    let url = std::str::from_utf8(buf.as_ref())?;
 
     let mut outbound = TcpStream::connect(url).await?;
     debug!("Established tunnel: {}", url);
     tokio::io::copy_bidirectional(&mut inbound, &mut outbound).await?;
     Ok(())
+}
+
+#[derive(Clone)]
+pub struct ConnectHeadBuf(Bytes);
+
+impl AsRef<[u8]> for ConnectHeadBuf {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl From<&str> for ConnectHeadBuf {
+    fn from(host: &str) -> Self {
+        let mut buf = BytesMut::new();
+        buf.put_u16(host.len() as u16);
+        buf.put(host.as_bytes());
+        Self(buf.freeze())
+    }
 }
 
 #[derive(Debug)]

@@ -1,11 +1,10 @@
 use anyhow::{bail, Context, Result};
-use bytes::{BufMut, BytesMut};
 use futures::{ready, Future, FutureExt, TryFutureExt};
 use http::{Request, Uri};
 use hyper::client::conn::http2;
 use hyper::upgrade::Upgraded;
 use hyper::Body;
-use octoproxy_lib::proxy::QuicBidiStream;
+use octoproxy_lib::proxy::{ConnectHeadBuf, QuicBidiStream};
 use rustls::{ClientConfig, ServerName};
 use std::pin::Pin;
 use std::{sync::Arc, time::Duration};
@@ -39,7 +38,7 @@ impl MixClient {
 
     pub(crate) async fn new_stream_fut(
         &self,
-        host: Option<String>,
+        host: Option<ConnectHeadBuf>,
     ) -> Result<PinBoxFut<Result<BidiStream>>> {
         match &self {
             MixClient::H2(client) => client.new_stream_fut(host).await,
@@ -69,7 +68,7 @@ pub(crate) trait ConnConfig<SR> {
 
     /// Constructing a corresponding future without executing
     /// Initiating a stream
-    fn new_stream(&self, client: SR, host: Option<String>) -> PinBoxFut<Result<BidiStream>>
+    fn new_stream(&self, client: SR, host: Option<ConnectHeadBuf>) -> PinBoxFut<Result<BidiStream>>
     where
         SR: Clone;
 }
@@ -169,10 +168,7 @@ impl ConnConfig<QuicSendRequest> for QuicConnConfig {
                 None => self.connect_addr().await?,
             };
 
-            let conn = tokio::spawn(async move {
-                //
-                client_endpoint.wait_idle().await
-            });
+            let conn = tokio::spawn(async move { client_endpoint.wait_idle().await });
 
             Ok((conn, quinn_conn))
         }
@@ -182,7 +178,7 @@ impl ConnConfig<QuicSendRequest> for QuicConnConfig {
     fn new_stream(
         &self,
         quinn_conn: QuicSendRequest,
-        host: Option<String>,
+        host: Option<ConnectHeadBuf>,
     ) -> PinBoxFut<Result<BidiStream>> {
         async move {
             match host {
@@ -192,30 +188,26 @@ impl ConnConfig<QuicSendRequest> for QuicConnConfig {
                         .await
                         .map_err(|e| anyhow!("failed to open stream: {}", e))?;
 
-                    let mut state = QuicStreamState::Init;
-                    poll_fn(|cx| loop {
-                        match &state {
-                            QuicStreamState::Init => {
-                                // host len
-                                // host data
-                                let mut buf = BytesMut::new();
-                                buf.put_u16(host.len() as u16);
-                                buf.put(host.as_bytes());
-                                let buf = buf.to_vec();
-                                state = QuicStreamState::Write { buf };
-                            }
-                            QuicStreamState::Write { buf } => {
-                                let mut w = Box::pin((send).write_all(buf));
-                                ready!(w.as_mut().poll(cx))?;
-                                drop(w);
-                                state = QuicStreamState::Read;
-                            }
-                            QuicStreamState::Read => {
-                                let mut r = Box::pin((recv).read_chunk(2, true));
-                                ready!(r.as_mut().poll(cx))?;
-                                return std::task::Poll::Ready(anyhow::Ok(()));
-                            }
-                        };
+                    poll_fn(|cx| {
+                        let mut state = QuicStreamState::Init;
+                        loop {
+                            match &state {
+                                QuicStreamState::Init => {
+                                    state = QuicStreamState::Write(host.clone());
+                                }
+                                QuicStreamState::Write(buf) => {
+                                    let mut w = Box::pin((send).write_all(buf.as_ref()));
+                                    ready!(w.as_mut().poll(cx))?;
+                                    drop(w);
+                                    state = QuicStreamState::Read;
+                                }
+                                QuicStreamState::Read => {
+                                    let mut r = Box::pin((recv).read_chunk(2, true));
+                                    ready!(r.as_mut().poll(cx))?;
+                                    return std::task::Poll::Ready(anyhow::Ok(()));
+                                }
+                            };
+                        }
                     })
                     .await?;
 
@@ -230,7 +222,7 @@ impl ConnConfig<QuicSendRequest> for QuicConnConfig {
 
 enum QuicStreamState {
     Init,
-    Write { buf: Vec<u8> },
+    Write(ConnectHeadBuf),
     Read,
 }
 
@@ -270,7 +262,7 @@ impl ConnConfig<H2SendRequest> for H2ConnConfig {
     fn new_stream(
         &self,
         mut client: H2SendRequest,
-        host: Option<String>,
+        host: Option<ConnectHeadBuf>,
     ) -> PinBoxFut<Result<BidiStream>> {
         async move {
             let req = Request::connect(&self.remote_uri)
@@ -287,12 +279,8 @@ impl ConnConfig<H2SendRequest> for H2ConnConfig {
 
             match host {
                 Some(host) => {
-                    // host len
-                    // host data
-                    let mut buf = BytesMut::new();
-                    buf.put_u16(host.len() as u16);
-                    buf.put(host.as_bytes());
-                    stream.write_all(&buf).await?;
+                    let buf = &host.as_ref();
+                    stream.write_all(buf).await?;
 
                     Ok(BidiStream::H2(stream))
                 }
@@ -381,7 +369,10 @@ where
     /// - Connected -> NotConnected: Connection interrupted, attempting reconnection
     /// - NotConnected -> Connected: initial establishment of a connection
     /// - NotConnected -> Poisoned: Connection error(connection refused maybe)
-    async fn new_stream_fut(&self, host: Option<String>) -> Result<PinBoxFut<Result<BidiStream>>> {
+    async fn new_stream_fut(
+        &self,
+        host: Option<ConnectHeadBuf>,
+    ) -> Result<PinBoxFut<Result<BidiStream>>> {
         let mut inner_guard = self.inner.lock().await;
 
         loop {
