@@ -216,13 +216,10 @@ impl PeerInfo {
         }
     }
 
-    pub(crate) fn get_port_str(&self) -> String {
+    pub(crate) fn get_port_str(&self) -> &str {
         match self.port_index {
-            HostPortIndex::NonDafault(i) => {
-                let port_str = &self.host[i + 1..];
-                port_str.to_owned()
-            }
-            HostPortIndex::Default => HostPortIndex::DEFAULT_PORT.to_owned(),
+            HostPortIndex::NonDafault(i) => &self.host[i + 1..],
+            HostPortIndex::Default => HostPortIndex::DEFAULT_PORT,
         }
     }
 
@@ -249,7 +246,7 @@ impl PeerInfo {
 
             let mut host = host.to_owned();
             host.push(':');
-            host.push_str(&self.get_port_str());
+            host.push_str(self.get_port_str());
             host
         } else {
             self.get_valid_host()
