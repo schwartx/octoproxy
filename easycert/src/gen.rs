@@ -35,32 +35,33 @@ impl Gen {
     pub(crate) fn run(self) -> Result<()> {
         let san = parse_san(self.subject_alt_names)?;
         let ca = load_ca(self.ca_key, self.ca_cert)?;
-
-        let mut cert_params: CertificateParams = Default::default();
-        cert_params.not_before = time::OffsetDateTime::now_utc();
-        cert_params.not_after =
-            time::OffsetDateTime::now_utc() + time::Duration::days(self.days as i64);
-        cert_params.distinguished_name = DistinguishedName::new();
-        cert_params
-            .distinguished_name
-            .push(DnType::CommonName, self.common_name);
-        cert_params.subject_alt_names = san;
-        let cert = Certificate::from_params(cert_params)?;
+        let cert = gen_cert(self.common_name, self.days, san)?;
 
         let cert_signed = cert.serialize_pem_with_signer(&ca)?;
 
-        let name = self.name;
-        let output = self.output.join(&name);
+        let output = self.output.join(&self.name);
         std::fs::create_dir_all(&output)?;
 
-        let cert_path = output.join(name.clone() + ".crt");
+        let cert_path = output.join(self.name.clone() + ".crt");
         fs::write(cert_path, cert_signed)?;
 
-        let key_path = output.join(name + ".key");
+        let key_path = output.join(self.name + ".key");
         fs::write(key_path, cert.serialize_private_key_pem().as_bytes())?;
 
         Ok(())
     }
+}
+
+fn gen_cert(common_name: String, days: u32, san: Vec<SanType>) -> Result<Certificate> {
+    let mut cert_params: CertificateParams = Default::default();
+    cert_params.not_before = time::OffsetDateTime::now_utc();
+    cert_params.not_after = time::OffsetDateTime::now_utc() + time::Duration::days(days as i64);
+    cert_params.distinguished_name = DistinguishedName::new();
+    cert_params
+        .distinguished_name
+        .push(DnType::CommonName, common_name);
+    cert_params.subject_alt_names = san;
+    Ok(Certificate::from_params(cert_params)?)
 }
 
 /// Turns a vec of san str(e.g. "--san DNS:example.com", "--san IP:1.1.1.1") into
