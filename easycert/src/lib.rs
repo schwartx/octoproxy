@@ -24,5 +24,6 @@ impl Cmd {
 enum EasyCertCmd {
     /// generate certicates
     Gen(gen::Gen),
+    /// show certicates info
     Show(show::Show),
 }
