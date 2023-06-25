@@ -63,37 +63,49 @@ impl Gen {
     }
 }
 
-fn parse_san(subject_alt_names_str: Vec<String>) -> Result<Vec<SanType>> {
+/// Turns a vec of san str(e.g. "--san DNS:example.com", "--san IP:1.1.1.1") into
+/// a vec of rcgen::SanType.
+fn parse_san(subject_alt_names_str: Vec<String>) -> std::io::Result<Vec<SanType>> {
     if subject_alt_names_str.is_empty() {
-        return Err(Box::new(std::io::Error::new(
+        return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "at least provide one SAN",
-        ))
-        .into());
+        ));
     }
     let mut subject_alt_names = Vec::new();
     for san_str in subject_alt_names_str {
         let san: Vec<_> = san_str.split(':').take(2).collect();
         if san.len() != 2 {
-            return Err(Box::new(std::io::Error::new(
+            return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 format!("subject alt name should be in pair: {}", san_str),
-            ))
-            .into());
+            ));
         }
         let san_value = san[1];
         match san[0].to_uppercase().as_str() {
-            "DNS" => subject_alt_names.push(SanType::DnsName(san_value.into())),
+            "DNS" => {
+                if san_value.is_empty() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "Dns name is empty",
+                    ));
+                };
+                subject_alt_names.push(SanType::DnsName(san_value.into()))
+            }
             "IP" => {
-                let san_value = san_value.parse::<IpAddr>()?;
+                let san_value = san_value.parse::<IpAddr>().map_err(|x| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("Failed to parse ip address: {}", x),
+                    )
+                })?;
                 subject_alt_names.push(SanType::IpAddress(san_value))
             }
             _ => {
-                return Err(Box::new(std::io::Error::new(
+                return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
                     format!("subject alt name type currently not support: {}", san[0]),
-                ))
-                .into());
+                ));
             }
         }
     }
@@ -106,4 +118,88 @@ fn parse_ca(ca_key: PathBuf, ca_cert: PathBuf) -> Result<Certificate> {
     let ca = CertificateParams::from_ca_cert_pem(&ca, ca_keypair)?;
     let ca = Certificate::from_params(ca)?;
     Ok(ca)
+}
+
+#[cfg(test)]
+#[allow(unused)]
+pub(crate) mod tests {
+    use super::*;
+
+    fn vec_str2vec_string(a: Vec<&str>) -> Vec<String> {
+        a.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[test]
+    fn test_parse_san_ok() {
+        let sans = vec!["IP:1.1.1.1"];
+        let sans = vec_str2vec_string(sans);
+        let res = parse_san(sans);
+        assert!(res.is_ok());
+
+        let sans = vec!["iP:1.1.1.1"];
+        let sans = vec_str2vec_string(sans);
+        let res = parse_san(sans);
+        assert!(res.is_ok(), "Case insensive");
+
+        let sans = vec!["dns:example.com"];
+        let sans = vec_str2vec_string(sans);
+        let res = parse_san(sans);
+        assert!(res.is_ok());
+
+        let sans = vec!["ip:1.1.1.1", "dns:example.com"];
+        let sans = vec_str2vec_string(sans);
+        let res = parse_san(sans);
+        assert!(res.is_ok(), "Case insensive");
+    }
+
+    #[test]
+    fn test_parse_san_invalid() {
+        // empty
+        let sans: Vec<String> = Vec::new();
+        let res = parse_san(sans);
+        assert!(res.is_err(), "empty should fail");
+        assert_eq!(res.unwrap_err().to_string(), "at least provide one SAN");
+
+        // not in pair
+        let sans = vec!["IP:"];
+        let sans = vec_str2vec_string(sans);
+        let res = parse_san(sans);
+        assert!(res.is_err(), "not in pair should fail");
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "Failed to parse ip address: invalid IP address syntax"
+        );
+
+        // not in pair
+        let sans = vec!["IP"];
+        let sans = vec_str2vec_string(sans);
+        let res = parse_san(sans);
+        assert!(res.is_err(), "not in pair should fail");
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            format!("subject alt name should be in pair: {}", "IP")
+        );
+
+        // not in pair
+        let sans = vec!["IP:1.1.1.1", "IP:"];
+        let sans = vec_str2vec_string(sans);
+        let res = parse_san(sans);
+        assert!(res.is_err(), "not in pair should fail");
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "Failed to parse ip address: invalid IP address syntax"
+        );
+
+        // cannot parse ip
+        let sans = vec!["IP:1.1.1"];
+        let sans = vec_str2vec_string(sans);
+        let res = parse_san(sans);
+        assert!(res.is_err(), "not in pair should fail");
+
+        // empty dns name
+        let sans = vec!["DNS:"];
+        let sans = vec_str2vec_string(sans);
+        let res = parse_san(sans);
+        assert!(res.is_err(), "Dns name is empty");
+    }
 }
