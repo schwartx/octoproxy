@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 mod gen;
+mod show;
 
 /// EasyCert commandline args
 #[derive(Parser)]
@@ -14,6 +15,7 @@ impl Cmd {
     pub fn run(self) -> Result<()> {
         match self.cmd {
             EasyCertCmd::Gen(cmd) => cmd.run(),
+            EasyCertCmd::Show(cmd) => cmd.run(),
         }
     }
 }
@@ -22,4 +24,5 @@ impl Cmd {
 enum EasyCertCmd {
     /// generate certicates
     Gen(gen::Gen),
+    Show(show::Show),
 }

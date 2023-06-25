@@ -65,7 +65,7 @@ fn gen_cert(common_name: String, days: u32, san: Vec<SanType>) -> Result<Certifi
     Ok(Certificate::from_params(cert_params)?)
 }
 
-/// Turns a vec of san str(e.g. "--san DNS:example.com", "--san IP:1.1.1.1") into
+/// Turns a vec of san str(e.g. "DNS:example.com", "IP:1.1.1.1") into
 /// a vec of rcgen::SanType.
 fn parse_san(subject_alt_names_str: Vec<String>) -> std::io::Result<Vec<SanType>> {
     if subject_alt_names_str.is_empty() {
