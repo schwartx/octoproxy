@@ -1,9 +1,8 @@
-#![allow(unused)]
 use std::{fs::read_to_string, io::Write, path::PathBuf};
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use console::{style, Style};
+use console::style;
 use pem::Pem;
 use time::format_description;
 use x509_parser::prelude::X509Certificate;
@@ -88,7 +87,7 @@ fn load_pem(cert_content: &str) -> Result<Pem> {
     Ok(pem_content)
 }
 
-fn load_cert_from_der<'a>(pem_content: &'a Pem) -> Result<X509Certificate<'a>> {
+fn load_cert_from_der(pem_content: &Pem) -> Result<X509Certificate<'_>> {
     let (_, x509) = x509_parser::parse_x509_certificate(pem_content.contents())?;
     Ok(x509)
 }
