@@ -61,6 +61,7 @@ fn gen_cert(common_name: String, days: u32, san: Vec<SanType>) -> Result<Certifi
         .distinguished_name
         .push(DnType::CommonName, common_name);
     cert_params.subject_alt_names = san;
+
     Ok(Certificate::from_params(cert_params)?)
 }
 
@@ -122,7 +123,6 @@ fn load_ca(ca_key: PathBuf, ca_cert: PathBuf) -> Result<Certificate> {
 }
 
 #[cfg(test)]
-#[allow(unused)]
 pub(crate) mod tests {
     use super::*;
 
