@@ -1,4 +1,6 @@
 #!/bin/bash
+# Awesome lua script taken from
+# https://github.com/wg/wrk/issues/162#issuecomment-143963862
 
 proxy="http://localhost:8081/"
 url="http://localhost:3030/hi"
