@@ -163,6 +163,18 @@ struct H2FileConfig {
     /// If disabled, keep-alive pings are only sent while there are open request/responses streams.
     /// If enabled, pings are also sent when no streams are active.
     keep_alive_while_idle: bool,
+
+    #[serde(default = "h2_default_conn_window")]
+    initial_conn_window_size: u32,
+    #[serde(default = "h2_default_stream_window")]
+    initial_stream_window_size: u32,
+    #[serde(default = "h2_default_max_frame_size")]
+    max_frame_size: u32,
+    #[serde(default = "h2_default_max_send_buf_size")]
+    max_send_buffer_size: usize,
+    /// When adaptive_window is set to true, the above 4 options will be ignored.
+    #[serde(default = "default_false")]
+    adaptive_window: bool,
 }
 
 impl H2FileConfig {
@@ -176,6 +188,11 @@ impl H2FileConfig {
             .keep_alive_interval(Duration::from_secs(self.keep_alive_interval))
             .keep_alive_timeout(Duration::from_secs(self.keep_alive_timeout))
             .keep_alive_while_idle(self.keep_alive_while_idle)
+            .initial_connection_window_size(self.initial_conn_window_size)
+            .initial_stream_window_size(self.initial_stream_window_size)
+            .max_frame_size(self.max_frame_size)
+            .max_send_buf_size(self.max_send_buffer_size)
+            .adaptive_window(self.adaptive_window)
             .to_owned();
 
         let tls_config = Arc::new(tls_config);
@@ -191,12 +208,44 @@ impl H2FileConfig {
     }
 }
 
+/// These parameters are taken from
+/// https://github.com/hyperium/hyper/blob/52f192593fb9ebcf6d3894e0c85cbf710da4decd/src/proto/h2/client.rs#L40.
+const H2_DEFAULT_CONN_WINDOW: u32 = 1024 * 1024 * 5; // 5mb
+const H2_DEFAULT_STREAM_WINDOW: u32 = 1024 * 1024 * 2; // 2mb
+const H2_DEFAULT_MAX_FRAME_SIZE: u32 = 1024 * 16; // 16kb
+const H2_DEFAULT_MAX_SEND_BUF_SIZE: usize = 1024 * 1024; // 1mb
+
+fn h2_default_conn_window() -> u32 {
+    H2_DEFAULT_CONN_WINDOW
+}
+
+fn h2_default_stream_window() -> u32 {
+    H2_DEFAULT_STREAM_WINDOW
+}
+
+fn h2_default_max_frame_size() -> u32 {
+    H2_DEFAULT_MAX_FRAME_SIZE
+}
+
+fn h2_default_max_send_buf_size() -> usize {
+    H2_DEFAULT_MAX_SEND_BUF_SIZE
+}
+
 fn default_h2_file_config() -> H2FileConfig {
     H2FileConfig {
         keep_alive_interval: 10,
         keep_alive_timeout: 20,
         keep_alive_while_idle: false,
+        initial_conn_window_size: h2_default_conn_window(),
+        initial_stream_window_size: h2_default_stream_window(),
+        max_frame_size: h2_default_max_frame_size(),
+        max_send_buffer_size: h2_default_max_send_buf_size(),
+        adaptive_window: default_false(),
     }
+}
+
+fn default_false() -> bool {
+    false
 }
 
 fn default_retry_timeout() -> u64 {
@@ -504,6 +553,7 @@ pub(crate) mod tests {
                 keep_alive_interval: 1,
                 keep_alive_timeout: 1,
                 keep_alive_while_idle: true,
+                ..default_h2_file_config()
             },
             quic: default_quic_file_config(),
             protocol: BackendProtocol::HTTP2,
