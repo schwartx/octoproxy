@@ -34,18 +34,18 @@ pub(crate) struct Gen {
 impl Gen {
     pub(crate) fn run(self) -> Result<()> {
         let san = parse_san(self.subject_alt_names)?;
-        let ca = parse_ca(self.ca_key, self.ca_cert)?;
+        let ca = load_ca(self.ca_key, self.ca_cert)?;
 
-        let mut params: CertificateParams = Default::default();
-        params.not_before = time::OffsetDateTime::now_utc();
-        params.not_after = time::OffsetDateTime::now_utc() + time::Duration::days(self.days as i64);
-        params.distinguished_name = DistinguishedName::new();
-        params
+        let mut cert_params: CertificateParams = Default::default();
+        cert_params.not_before = time::OffsetDateTime::now_utc();
+        cert_params.not_after =
+            time::OffsetDateTime::now_utc() + time::Duration::days(self.days as i64);
+        cert_params.distinguished_name = DistinguishedName::new();
+        cert_params
             .distinguished_name
             .push(DnType::CommonName, self.common_name);
-        params.subject_alt_names = san;
-
-        let cert = Certificate::from_params(params)?;
+        cert_params.subject_alt_names = san;
+        let cert = Certificate::from_params(cert_params)?;
 
         let cert_signed = cert.serialize_pem_with_signer(&ca)?;
 
@@ -112,7 +112,7 @@ fn parse_san(subject_alt_names_str: Vec<String>) -> std::io::Result<Vec<SanType>
     Ok(subject_alt_names)
 }
 
-fn parse_ca(ca_key: PathBuf, ca_cert: PathBuf) -> Result<Certificate> {
+fn load_ca(ca_key: PathBuf, ca_cert: PathBuf) -> Result<Certificate> {
     let ca_keypair = KeyPair::from_pem(&read_to_string(ca_key)?)?;
     let ca = read_to_string(ca_cert)?;
     let ca = CertificateParams::from_ca_cert_pem(&ca, ca_keypair)?;
