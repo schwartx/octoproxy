@@ -23,13 +23,13 @@ cacert = "./assets/example-certs/ca.crt"
 client_key = "./assets/example-certs/client/client.key"
 client_cert = "./assets/example-certs/client/client.crt"
 
-[http2]
+[backends.local1.http2]
 keep_alive_interval = 1
 keep_alive_timeout = 1
 keep_alive_while_idle = true
 
 # bbr, cubic
-[quic]
+[backends.local1.quic]
 max_idle_timeout = 200
 keep_alive_interval = 0
 ipv4_only = true
@@ -47,7 +47,10 @@ max_retries = 0
 cacert = "./assets/example-certs/ca.crt"
 client_key = "./assets/example-certs/client/client.key"
 client_cert = "./assets/example-certs/client/client.crt"
-http2 = { keep_alive_interval = 1, keep_alive_timeout = 1, keep_alive_while_idle = true }
+[backends.local2.http2]
+keep_alive_interval = 1
+keep_alive_timeout = 1
+keep_alive_while_idle = true
 
 # server 2
 [backends.remote1]
