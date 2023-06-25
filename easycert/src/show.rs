@@ -110,6 +110,7 @@ impl Table {
         &self.0
     }
 
+    /// Find the longest name in rows and return its length.
     fn name_width(&self) -> usize {
         self.rows()
             .iter()
