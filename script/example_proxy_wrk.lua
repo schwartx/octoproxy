@@ -4,17 +4,13 @@ function extractHostname(url)
   return host
 end
 
-local url           = "http://localhost:8080/hi"
-
+local url           = "http://localhost:3030/hi"
 local host          = extractHostname(url)
-
 wrk.headers["Host"] = host
-
 request             = function()
   if not connected then
     connected = true
     return wrk.format("CONNECT", host)
   end
-
   return wrk.format("GET", url)
 end
