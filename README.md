@@ -20,26 +20,26 @@ _Octoproxy_ is a load balancing proxy that draws inspiration from the remarkable
 
 ## Features
 
-- mTLS Transport Encryption: mTLS(Mutual TLS) encryption for secure communication.
-- HTTP/2 or QUIC Protocol Selection: Choose between the HTTP/2 or QUIC protocols for communication.
-- Multiplexing with H2/QUIC: Utilize H2/QUIC for multiplexing, connections management, and reducing TCP connections to remote servers.
-- Support for Multiple Load Balancing Algorithms: Support various load balancing algorithms sush as Round Robin, Random, Least Loaded Time, Uri Hash, First, (and more on the way).
-- Metrics: Provide metrics on action connections per backend, used protocols, and connection latency, (and more on the way).
-- TUI: Offer a command-line terminal UI for administrative tasks, including mangaging backend status(up/down), protocol switching, and restarting backends.
-- 100% in Rust.
-- Single Binary: Deliver the application as a single executable binary.
-- Host Rewriting: Allow rewriting of the host(e.g. example.com:8080 can be rewritten as google.com:8080).
-- Backend Selection based on Host: Enable specifying a backend based on the host, bypassing load balancing algorithms.
-- Selective Direct Connection based on Host: Allow selective direct connection based on the host, without going through the backend proxy.
-- mTLS Certificate Generator: Provide a convenient tool for generating mTLS certificates.
-- Certificate Basic Infomation Viewer: Offer a viewer to display basic information about certificate(valid time, SANs, Issuer, etc).
+- **mTLS Transport Encryption**: mTLS(Mutual TLS) encryption for secure communication.
+- **HTTP/2 or QUIC Protocol Selection**: Choose between the HTTP/2 or QUIC protocols for communication.
+- **Multiplexing with H2/QUIC**: Utilize H2/QUIC for multiplexing, connections management, and reducing TCP connections to remote servers.
+- **Support for Multiple Load Balancing Algorithms**: Support various load balancing algorithms sush as Round Robin, Random, Least Loaded Time, Uri Hash, First, (and more on the way).
+- **Metrics**: Provide metrics on action connections per backend, used protocols, and connection latency, (and more on the way).
+- **TUI**: Offer a command-line terminal UI for administrative tasks, including mangaging backend status(up/down), protocol switching, and restarting backends, and metrics.
+- **100% in Rust**.
+- **Single Binary**: Deliver the application as a single executable binary.
+- **Host Rewriting**: Allow rewriting of the host(e.g. example.com:8080 can be rewritten as google.com:8080).
+- **Backend Selection based on Host**: Enable specifying a backend based on the host, bypassing load balancing algorithms.
+- **Selective Direct Connection based on Host**: Allow selective direct connection based on the host, without going through the backend proxy.
+- **mTLS Certificate Generator**: Provide a convenient tool for generating mTLS certificates.
+- **Certificate Basic Infomation Viewer**: Offer a viewer to display basic information about certificate(valid time, SANs, Issuer, etc).
 
 
 ## Exclusions(Will Not Do)
 
-- User Management: Since this aimed to be a personal tool for non-commercial use, there are no plans to implement user/account mangement.
-- Traffic Limits: Due to the same reasons mentioned above, and also because there is currently no implementation for bandwidth/traffic monitoring.
-- Encryption Protocols/Obfuscation other than mTLS: No.
+- **User Management**: Since this aimed to be a personal tool for non-commercial use, there are no plans to implement user/account mangement.
+- **Traffic Limits**: Due to the same reasons mentioned above, and also because there is currently no implementation for bandwidth/traffic monitoring.
+- **Encryption Protocols/Obfuscation other than mTLS**: No.
 
 
 ## Overview
@@ -109,6 +109,8 @@ to compare the performance of requests made through a proxy and direct requests.
 - Enhanced Doc
 - Improved Handling of Non-CONNECT method http proxy requests
 - Support for Sock5.
+- Feature-Rich TUI
+- Additional and Complex Load Balancing Algorithms
 
 ## Inspiration
 
