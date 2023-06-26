@@ -5,14 +5,10 @@ log_level = "info"
 balance = "frist"
 host_rule = "./assets/host_rule.toml"
 
-# balance = "roundrobin"
-
 [backends]
 
-# local server 1
 [backends.local1]
 protocol = "quic"
-# cafile for client auth
 address = "localhost:8443"
 
 cacert = "./assets/example-certs/ca.crt"
@@ -27,4 +23,3 @@ ipv4_only = true
 expected_rtt = 300
 max_stream_bandwidth = 2097152
 congestion = "bbr"
-
