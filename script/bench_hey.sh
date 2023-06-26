@@ -18,8 +18,23 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
+# 256
+block=$(cat << EOF
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+EOF
+)
+
 hey -x "$use_proxy" \
   -cpus 1 \
-  -n 2000 \
-  -c 5 \
+  -n 20000 \
+  -c 15 \
+  -m POST \
+  -d "$block" \
   http://localhost:3030/hi
