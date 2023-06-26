@@ -24,16 +24,6 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-if [[ -z "$proxy" ]]; then
-    echo "Required: -proxy"
-    exit 1
-fi
-
-if [[ -z "$url" ]]; then
-    echo "Required: -url"
-    exit 1
-fi
-
 echo "proxy: $proxy"
 echo "URL: $url"
 
@@ -57,10 +47,10 @@ end
 EOF
 )
 
-cat <(echo "$lua_str")
+# cat <(echo "$lua_str")
 
 # NOTE: Can't use Process Substitution
 tmp_file=$(mktemp)
 echo "$lua_str" > "$tmp_file"
 
-wrk -t1 -c1 -d30s -s "$tmp_file" $proxy
+wrk -t1 --latency -c15 -d10s -s "$tmp_file" $proxy
