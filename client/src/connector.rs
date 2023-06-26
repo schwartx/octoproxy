@@ -188,26 +188,24 @@ impl ConnConfig<QuicSendRequest> for QuicConnConfig {
                         .await
                         .map_err(|e| anyhow!("failed to open stream: {}", e))?;
 
-                    poll_fn(|cx| {
-                        let mut state = QuicStreamState::Init;
-                        loop {
-                            match &state {
-                                QuicStreamState::Init => {
-                                    state = QuicStreamState::Write(host.clone());
-                                }
-                                QuicStreamState::Write(buf) => {
-                                    let mut w = Box::pin((send).write_all(buf.as_ref()));
-                                    ready!(w.as_mut().poll(cx))?;
-                                    drop(w);
-                                    state = QuicStreamState::Read;
-                                }
-                                QuicStreamState::Read => {
-                                    let mut r = Box::pin((recv).read_chunk(2, true));
-                                    ready!(r.as_mut().poll(cx))?;
-                                    return std::task::Poll::Ready(anyhow::Ok(()));
-                                }
-                            };
-                        }
+                    let mut state = QuicStreamState::Init;
+                    poll_fn(|cx| loop {
+                        match &state {
+                            QuicStreamState::Init => {
+                                state = QuicStreamState::Write(host.clone());
+                            }
+                            QuicStreamState::Write(buf) => {
+                                let mut w = Box::pin((send).write_all(buf.as_ref()));
+                                ready!(w.as_mut().poll(cx))?;
+                                drop(w);
+                                state = QuicStreamState::Read;
+                            }
+                            QuicStreamState::Read => {
+                                let mut r = Box::pin((recv).read_chunk(2, true));
+                                ready!(r.as_mut().poll(cx))?;
+                                return std::task::Poll::Ready(anyhow::Ok(()));
+                            }
+                        };
                     })
                     .await?;
 

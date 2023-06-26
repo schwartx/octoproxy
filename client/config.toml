@@ -36,10 +36,10 @@ ipv4_only = true
 expected_rtt = 300
 max_stream_bandwidth = 2097152
 congestion = "bbr"
-# status = "force_closed"
 
 # local server 1
 [backends.local2]
+status = "force_closed"
 protocol = "http2"
 address = "localhost:8443"
 retry_timeout = 3
