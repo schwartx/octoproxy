@@ -18,6 +18,25 @@
 
 _Octoproxy_ is a load balancing proxy that draws inspiration from the remarkable abilities of an octopus. Just like an octopus with its multiple arms, Octoproxy efficiently manages incoming client requests and distributes them across multiple backend servers. With its flexible tentacles, Octoproxy dynamically adapts to changing network conditions and intelligently routes traffic to ensure optimal performance and high availability. Similar to how an octopus uses its keen senses to navigate the ocean, Octoproxy leverages load balancing algorithms and protocols to monitor server health, detect failures, and seamlessly redirect traffic for a smooth and reliable experience. Dive into the world of Octoproxy and experience its efficient and intelligent load balancing capabilities for your applications.
 
+## Features
+- mTLS Transport Encryption: mTLS(Mutual TLS) encryption for secure communication.
+- HTTP/2 or QUIC Protocol Selection: Choose between the HTTP/2 or QUIC protocols for communication.
+- Multiplexing with H2/QUIC: Utilize H2/QUIC for multiplexing, connections management, and reducing TCP connections to remote servers.
+- Support for Multiple Load Balancing Algorithms: Support various load balancing algorithms sush as Round Robin, Random, Least Loaded Time, Uri Hash, First, (and more on the way).
+- Metrics: Provide metrics on action connections per backend, used protocols, and connection latency, (and more on the way).
+- TUI: Offer a command-line terminal UI for administrative tasks, including mangaging backend status(up/down), protocol switching, and restarting backends.
+- 100% in Rust.
+- Single Binary: Deliver the application as a single executable binary.
+- Host Rewriting: Allow rewriting of the host(e.g. example.com:8080 can be rewritten as google.com:8080).
+- Backend Selection based on Host: Enable specifying a backend based on the host, bypassing load balancing algorithms.
+- Selective Direct Connection based on Host: Allow selective direct connection based on the host, without going through the backend proxy.
+- mTLS Certificate Generator: Provide a convenient tool for generating mTLS certificates.
+- Certificate Basic Infomation Viewer: Offer a viewer to display basic information about certificate(valid time, SANs, Issuer, etc).
+
+
+## Exclusions
+TODO
+
 ## Overview
 
 - `client`: The `octoproxy-client` is a load balancing proxy implemented on the client-side.
@@ -76,6 +95,9 @@ to compare the performance of requests made through a proxy and direct requests.
 |   average_time/secs   |   0.0053  |   0.0012   |       +0.0041        |
 | requests_per_sec/unit | 2830.5859 | 12081.8832 |      -9251.2973      |
 
+
+## TODO
+TODO
 
 ## Inspiration
 
