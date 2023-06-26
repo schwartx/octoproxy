@@ -34,8 +34,11 @@ _Octoproxy_ is a load balancing proxy that draws inspiration from the remarkable
 - Certificate Basic Infomation Viewer: Offer a viewer to display basic information about certificate(valid time, SANs, Issuer, etc).
 
 
-## Exclusions
-TODO
+## Exclusions(Will Not Do)
+- User Management: Since this aimed to be a personal tool for non-commercial use, there are no plans to implement user/account mangement.
+- Traffic Limits: Due to the same reasons mentioned above, and also because there is currently no implementation for bandwidth/traffic monitoring.
+- Encryption Protocols/Obfuscation other than mTLS: No.
+
 
 ## Overview
 
