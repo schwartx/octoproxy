@@ -31,6 +31,10 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 EOF
 )
 
+if [[ -z "$use_proxy" ]]; then
+    echo "direct connection"
+fi
+
 hey -x "$use_proxy" \
   -cpus 1 \
   -n 20000 \
