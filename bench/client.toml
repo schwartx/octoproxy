@@ -6,11 +6,9 @@ balance = "frist"
 host_rule = "./assets/host_rule.toml"
 
 [backends]
-
 [backends.local1]
 protocol = "quic"
 address = "localhost:8443"
-
 cacert = "./assets/example-certs/ca.crt"
 client_key = "./assets/example-certs/client/client.key"
 client_cert = "./assets/example-certs/client/client.crt"

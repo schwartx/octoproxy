@@ -62,7 +62,7 @@ octoproxy easycert gen --cacert ./ca.crt --cakey ./ca.key --common-name server_n
 ## Benchmark
 Using [hey](https://github.com/rakyll/hey), a load test was conducted with 1 cpu
 and 15 workers, executing a total of 20_000 requests and _Octoproxy_ was utilized with
-a single backend, employing the HTTP/2 protocol, see config in details.
+a single backend, employing the HTTP/2 protocol, see config [in details](bench/client.toml).
 The purpose of the test was
 to compare the performance of requests made through a proxy and direct requests.
 **This is a simple benchmark test, with more scenarios on the way.**
