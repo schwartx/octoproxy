@@ -1,0 +1,30 @@
+listen_address = "0.0.0.0:8081"
+metric_address = "127.0.0.1:8403"
+log_level = "info"
+# random, round_robin, least_loaded_time,uri_hash, frist
+balance = "frist"
+host_rule = "./assets/host_rule.toml"
+
+# balance = "roundrobin"
+
+[backends]
+
+# local server 1
+[backends.local1]
+protocol = "quic"
+# cafile for client auth
+address = "localhost:8443"
+
+cacert = "./assets/example-certs/ca.crt"
+client_key = "./assets/example-certs/client/client.key"
+client_cert = "./assets/example-certs/client/client.crt"
+
+# bbr, cubic
+[backends.local1.quic]
+max_idle_timeout = 200
+keep_alive_interval = 0
+ipv4_only = true
+expected_rtt = 300
+max_stream_bandwidth = 2097152
+congestion = "bbr"
+
