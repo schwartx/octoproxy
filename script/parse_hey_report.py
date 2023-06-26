@@ -91,6 +91,8 @@ if __name__ == "__main__":
          p = proxy_report[k]
          d = direct_report[k]
          diff = round(p - d, 4)
+         if diff > 0:
+             diff = f"+{diff}"
          table.add_row([f"{k}/{v}", p, d, diff])
 
     print(table)
