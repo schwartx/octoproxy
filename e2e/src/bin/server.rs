@@ -60,7 +60,8 @@ async fn main() {
                     .map_err(|_e| warp::reject::custom(NotUtf8))
             }),
         )
-        .map(warp::reply::html);
+        .map(warp::reply::html)
+        .with(warp::trace::request());
 
     let addr: SocketAddr = ([127, 0, 0, 1], opts.port).into();
     if opts.tls {

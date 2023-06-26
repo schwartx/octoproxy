@@ -59,6 +59,23 @@ Example: To generate a certificate for local server use:
 octoproxy easycert gen --cacert ./ca.crt --cakey ./ca.key --common-name server_name --san "DNS:localhost" --san "IP:127.0.0.1" -o . --days 3650 server
 ```
 
+## Benchmark
+Using [hey](https://github.com/rakyll/hey), a load test was conducted with 1 cpu
+and 15 workers, executing a total of 20_000 requests and _Octoproxy_ was utilized with
+a single backend, employing the HTTP/2 protocol, see config [in details](bench/client.toml).
+The purpose of the test was
+to compare the performance of requests made through a proxy and direct requests.
+**This is a simple benchmark test, with more scenarios on the way.**
+
+
+|         Metric        |   Proxy   |   Direct   | Diff(Proxy - Direct) |
+|-----------------------|-----------|------------|----------------------|
+|    total_time/secs    |   7.0639  |   1.655    |       +5.4089        |
+|   slowest_time/secs   |   0.0255  |   0.0118   |       +0.0137        |
+|   fastest_time/secs   |   0.0017  |   0.0002   |       +0.0015        |
+|   average_time/secs   |   0.0053  |   0.0012   |       +0.0041        |
+| requests_per_sec/unit | 2830.5859 | 12081.8832 |      -9251.2973      |
+
 
 ## Inspiration
 
