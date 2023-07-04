@@ -10,7 +10,7 @@
 [s2]: https://img.shields.io/crates/v/octoproxy.svg
 [l2]: https://crates.io/crates/octoproxy
 
-<h5 align="center">Octoproxy - A load balancing proxy with mTLS encryption for QUIC and HTTP/2</h1>
+<h5 align="center">Octoproxy - A load balancing proxy with mTLS encryption via QUIC or HTTP/2</h1>
 
 > This is a work in progress project and is currently in the development phase and may have unknown issues and potential bugs. Please use it at your own risk.
 
