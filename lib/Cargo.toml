@@ -20,7 +20,7 @@ serde = { workspace = true }
 rustls = { version = "0.21.0", features = ["dangerous_configuration"] }
 futures = { version = "0.3.28", features = ["std"] }
 rustls-pemfile = "1.0.2"
-webpki-roots = "0.23.0"
+webpki-roots = "1.0.10"
 
 httparse = "1.8.0"
 quinn = { workspace = true }
